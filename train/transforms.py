@@ -3,6 +3,7 @@ from typing import Dict, Tuple
 from numpy import random
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 
 from torchvision import transforms
@@ -15,13 +16,20 @@ ImageSizeTuple = Tuple[int, int]
 class ResizeImage:
 
     def __init__(self, size: ImageSizeTuple = (256, 512)) -> None:
+        self.size = size
         self.transform = transforms.Resize(size)
 
     def __call__(self, image_pair: ImageDict) -> ImageDict:
-        left = self.transform(image_pair["left"])
-        right = self.transform(image_pair["right"])
+        image_pair['left'] = self.transform(image_pair['left'])
+        image_pair['right'] = self.transform(image_pair['right'])
 
-        return {"left": left, "right": right}
+        if 'ensemble' in image_pair:
+            ensemble = F.interpolate(image_pair['ensemble'], self.size,
+                                     mode='bilinear', align_corners=True)
+
+            image_pair['ensemble'] = ensemble
+
+        return image_pair
 
 
 class ToTensor:
@@ -30,10 +38,10 @@ class ToTensor:
         self.transform = transforms.ToTensor()
 
     def __call__(self, image_pair: ImageDict) -> ImageDict:
-        left = self.transform(image_pair["left"])
-        right = self.transform(image_pair["right"])
+        image_pair['left'] = self.transform(image_pair['left'])
+        image_pair['right'] = self.transform(image_pair['right'])
 
-        return {"left": left, "right": right}
+        return image_pair
 
 
 class RandomFlip:
@@ -44,8 +52,11 @@ class RandomFlip:
 
     def __call__(self, image_pair: ImageDict) -> ImageDict:
         if random.random() < self.probability:
-            image_pair["left"] = self.transform(image_pair["left"])
-            image_pair["right"] = self.transform(image_pair["right"])
+            image_pair['left'] = self.transform(image_pair['left'])
+            image_pair['right'] = self.transform(image_pair['right'])
+
+            if 'ensemble' in image_pair:
+                image_pair['ensemble'] = image_pair['ensemble'][:, :, ::-1]
 
         return image_pair
 
@@ -80,7 +91,7 @@ class RandomAugment:
         return torch.clamp(x, 0, 1)
 
     def __call__(self, image_pair: ImageDict) -> ImageDict:
-        left, right = image_pair["left"], image_pair["right"]
+        left, right = image_pair['left'], image_pair['right']
 
         if random.random() < self.probability:
             g = random.uniform(*self.gamma)
@@ -91,4 +102,7 @@ class RandomAugment:
             left = self.transform(left, g, b, c)
             right = self.transform(right, g, b, c)
 
-        return {"left": left, "right": right}
+            image_pair['left'] = left
+            image_pair['right'] = right
+
+        return image_pair
