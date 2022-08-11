@@ -220,12 +220,7 @@ class ReprojectionErrorLoss(nn.Module):
 
         # We flip left and right since the right reprojection error
         # is given by the left disparity and vice-versa
-        truth_mean = torch.cat((right, left), dim=1)
-
-        _, _, height, width = predicted.size()
-
-        truth = F.interpolate(truth_mean, size=(height, width),
-                              mode='bilinear', align_corners=True)
+        truth = torch.cat((right, left), dim=1)
 
         predicted = self.pool(predicted)
         truth = self.pool(truth)

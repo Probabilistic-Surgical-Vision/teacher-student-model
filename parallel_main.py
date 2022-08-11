@@ -39,6 +39,8 @@ parser.add_argument('--batch-size', '-b', default=8, type=int,
                     help='The batch size to train/evaluate the model with.')
 parser.add_argument('--adversarial', action='store_true', default=False,
                     help='Train the model with a discriminator.')
+parser.add_argument('--finetune-from', default=None, type=str,
+                    help='The path to the model to finetune.')
 parser.add_argument('--workers', '-w', default=8, type=int,
                     help='The number of workers to use for the dataloader.')
 parser.add_argument('--training-size', default=None, nargs='?', type=int,
@@ -179,6 +181,19 @@ def main(gpu_index: int, args: argparse.Namespace):
         disc = None
         disc_loss_function = None
 
+    if args.finetune_from is not None:
+        state_dict = torch.load(args.finetune_from)
+        
+        if disc is not None:
+            model_state = state_dict['model']
+            disc_state = state_dict['disc']
+
+            disc.load_state_dict(disc_state)
+        else:
+            model_state = state_dict
+        
+        model.load_state_dict(model_state)
+
     date = datetime.now().strftime('%Y%m%d%H%M%S')
     folder = f'model_{date}'
 
@@ -200,6 +215,7 @@ def main(gpu_index: int, args: argparse.Namespace):
                        save_evaluation_to=results_directory,
                        save_every=args.save_model_every,
                        evaluate_every=args.evaluate_every,
+                       finetune=(args.finetune_from is not None),
                        device=device, no_pbar=args.no_pbar, rank=rank)
 
     training_losses, validation_losses = loss

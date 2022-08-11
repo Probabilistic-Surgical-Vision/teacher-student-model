@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import List, Optional, OrderedDict, Union
 
 import matplotlib.pyplot as plt
 
@@ -200,3 +200,7 @@ def get_comparison(image: Tensor, prediction: Tensor, extra: Optional[Tensor],
                            right_extra.unsqueeze(0)))
 
     return make_grid(images, nrow=2)
+
+
+def prepare_state_dict(state_dict: OrderedDict) -> dict:
+    return {k.replace("module.", ""): v for k, v in state_dict.items()}

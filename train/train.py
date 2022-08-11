@@ -19,6 +19,7 @@ Loss = List[float]
 
 
 def save_model(model: Module, save_model_to: str,
+               disc: Optional[Module] = None,
                epoch_number: Optional[int] = None,
                is_final: bool = False) -> None:
 
@@ -28,8 +29,16 @@ def save_model(model: Module, save_model_to: str,
     filename = 'final.pt' if is_final else f'epoch_{epoch_number:03}.pt'
     filepath = os.path.join(save_model_to, filename)
 
+    if disc is not None:
+        state_dict = {
+            'model': model.state_dict(),
+            'disc': disc.state_dict()
+        }
+    else:
+        state_dict = model.state_dict()
+
     print(f'Saving model to:\n\t{filepath}')
-    torch.save(model.state_dict(), filepath)
+    torch.save(state_dict, filepath)
 
 
 def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
@@ -40,7 +49,7 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
                     epoch_number: Optional[int] = None,
                     scales: int = 4, perceptual_update_freq: int = 10,
                     device: Device = 'cpu', no_pbar: bool = False,
-                    rank: int = 0) -> float:
+                    rank: int = 0) -> Tuple[float, float]:
     model.train()
 
     if disc is not None:
@@ -126,7 +135,7 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
 
 def train_model(model: Module, loader: DataLoader, loss_function: Module,
                 epochs: int, learning_rate: float,
-                discriminator: Optional[Module] = None,
+                disc: Optional[Module] = None,
                 disc_loss_function: Optional[Module] = None,
                 scheduler_decay_rate: float = 0.1,
                 scheduler_step_size: int = 15,
@@ -136,12 +145,14 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
                 save_evaluation_to: Optional[str] = None,
                 save_every: Optional[int] = None,
                 save_model_to: Optional[str] = None,
-                device: Device = 'cpu', no_pbar: bool = False,
+                finetune: bool = False,
+                device: Device = 'cpu',
+                no_pbar: bool = False,
                 rank: int = 0) -> Tuple[Loss, Loss]:
 
     model_optimiser = Adam(model.parameters(), learning_rate)
-    disc_optimiser = Adam(discriminator.parameters(), learning_rate) \
-        if discriminator is not None else None
+    disc_optimiser = Adam(disc.parameters(), learning_rate) \
+        if disc is not None else None
 
     scheduler = StepLR(model_optimiser, scheduler_step_size,
                        scheduler_decay_rate)
@@ -150,10 +161,10 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
     validation_losses = []
 
     for i in range(epochs):
-        scale = u.adjust_disparity_scale(epoch=i)
+        scale = 1 if finetune else u.adjust_disparity_scale(epoch=i) 
 
         loss = train_one_epoch(model, loader, loss_function, model_optimiser,
-                               scale, discriminator, disc_optimiser,
+                               scale, disc, disc_optimiser,
                                disc_loss_function, epoch_number=(i+1),
                                perceptual_update_freq=perceptual_update_freq,
                                device=device, no_pbar=no_pbar, rank=rank)
@@ -165,7 +176,7 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
 
         if evaluate_every is not None and (i+1) % evaluate_every == 0:
             loss = evaluate_model(model, val_loader, loss_function, scale,
-                                  discriminator, disc_loss_function,
+                                  disc, disc_loss_function,
                                   save_evaluation_to, epoch_number=(i+1),
                                   device=device, is_final=False,
                                   no_pbar=no_pbar, rank=rank)
@@ -174,7 +185,8 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
                 validation_losses.append(loss)
 
         if save_every is not None and (i+1) % save_every == 0 and rank == 0:
-            save_model(model, save_model_to, epoch_number=(i+1))
+            save_model(model, save_model_to, disc,
+                       epoch_number=(i+1))
 
     if rank == 0:
         print('Training completed.')
