@@ -11,12 +11,14 @@ from torchvision import transforms
 import yaml
 import json
 
-from loaders import DaVinciDataset, SCAREDDataset
+from loaders.ensemble import DaVinciEnsembleDataset, \
+    SCAREDEnsembleDataset
+
 from model import RandomlyConnectedModel, RandomDiscriminator
 
 import train
 from train import train_model
-from train.loss import ModelLoss
+from train.loss import TukraEnsembleLoss
 import train.utils as u
 
 parser = argparse.ArgumentParser()
@@ -67,8 +69,8 @@ def main(args: argparse.Namespace) -> None:
 
     val_label = 'test' if args.dataset == 'da-vinci' else 'val'
     dataset_path = os.path.join(args.home, 'datasets', args.dataset)
-    dataset_class = DaVinciDataset if args.dataset == 'da-vinci' \
-        else SCAREDDataset
+    dataset_class = DaVinciEnsembleDataset if args.dataset == 'da-vinci' \
+        else SCAREDEnsembleDataset
 
     device = torch.device('cuda') if torch.cuda.is_available() \
         and not args.no_cuda else torch.device('cpu')
@@ -106,7 +108,7 @@ def main(args: argparse.Namespace) -> None:
                             shuffle=False, num_workers=args.workers)
 
     model = RandomlyConnectedModel(**config['model']).to(device)
-    loss_function = ModelLoss(**config['loss']).to(device)
+    loss_function = TukraEnsembleLoss(**config['loss']).to(device)
 
     model_parameters = sum(p.numel() for p in model.parameters())
     print(f'Model has {model_parameters:,} learnable parameters.'

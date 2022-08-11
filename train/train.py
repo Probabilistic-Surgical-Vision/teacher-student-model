@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 import tqdm
 
 from .evaluate import evaluate_model
+
 from . import utils as u
 from .utils import Device
 
@@ -76,15 +77,18 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
 
         left = image_pair['left'].to(device)
         right = image_pair['right'].to(device)
+        truth = image_pair['ensemble'].to(device)
+
         images = torch.cat([left, right], dim=1)
+
         image_pyramid = u.scale_pyramid(images, scales)
+        truth_pyramid = u.scale_pyramid(truth, scales)
 
         model_optimiser.zero_grad()
         disparities = model(left, scale)
 
-        recon_pyramid = u.reconstruct_pyramid(disparities, image_pyramid)
         disp_loss, error_loss = loss_function(image_pyramid, disparities,
-                                              recon_pyramid, i, disc_clone)
+                                              truth_pyramid, i, disc_clone)
 
         model_loss = disp_loss + error_loss
 
@@ -100,7 +104,7 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
 
         if disc is not None:
             disc_optimiser.zero_grad()
-            disc_loss = u.run_discriminator(image_pyramid, recon_pyramid,
+            disc_loss = u.run_discriminator(image_pyramid, truth_pyramid,
                                             disc, disc_loss_function,
                                             batch_size)
 

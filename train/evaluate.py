@@ -77,18 +77,20 @@ def evaluate_model(model: Module, loader: DataLoader,
     for i, image_pair in enumerate(tepoch):
         left = image_pair['left'].to(device)
         right = image_pair['right'].to(device)
+        truth = image_pair['ensemble'].to(device)
 
         images = torch.cat([left, right], dim=1)
+
         image_pyramid = u.scale_pyramid(images, scales)
+        truth_pyramid = u.scale_pyramid(truth, scales)
 
         disparities = model(left, scale)
 
-        recon_pyramid = u.reconstruct_pyramid(disparities, image_pyramid)
         disp_loss, error_loss = loss_function(image_pyramid, disparities,
-                                              recon_pyramid, i, disc)
+                                              truth_pyramid, i, disc)
 
         if disc is not None:
-            disc_loss = u.run_discriminator(image_pyramid, recon_pyramid,
+            disc_loss = u.run_discriminator(image_pyramid, truth_pyramid,
                                             disc, disc_loss_function,
                                             batch_size)
 
@@ -111,11 +113,12 @@ def evaluate_model(model: Module, loader: DataLoader,
                            scale=scale)
 
         if save_evaluation_to is not None and i == 0:
-            error_pyramid = loss_function.reprojection_errors
+            error_map = loss_function.error_maps[0][0]
+            truth_map = truth_pyramid[0][0][:, :2]
+
             save_comparisons(image_pyramid[0][0], disparities[0][0],
-                             recon_pyramid[0][0], error_pyramid[0][0],
-                             save_evaluation_to, epoch_number,
-                             is_final, device)
+                             truth_map, error_map, save_evaluation_to,
+                             epoch_number, is_final, device)
 
     if no_pbar and rank == 0:
         disc_loss_string = f'{disc_loss_per_image:.2e}' \

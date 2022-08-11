@@ -21,7 +21,7 @@ from model import RandomlyConnectedModel, RandomDiscriminator
 
 import train
 from train import train_model
-from train.loss import ModelLoss
+from train.loss import TukraEnsembleLoss
 
 
 parser = argparse.ArgumentParser()
@@ -158,7 +158,7 @@ def main(gpu_index: int, args: argparse.Namespace) -> None:
     model = SyncBatchNorm.convert_sync_batchnorm(model)
     model = DistributedDataParallel(model, device_ids=[gpu_index])
 
-    loss_function = ModelLoss(**config['loss']).to(device)
+    loss_function = TukraEnsembleLoss(**config['loss']).to(device)
 
     if rank == 0:
         model_parameters = sum(p.numel() for p in model.parameters())

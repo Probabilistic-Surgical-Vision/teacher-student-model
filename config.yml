@@ -115,3 +115,4 @@ loss:
     smoothness_weight: 0
     consistency_weight: 0.5
     pooling: false
+    include_aleatoric: false
