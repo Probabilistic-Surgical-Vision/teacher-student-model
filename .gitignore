@@ -11,4 +11,4 @@ venv
 model-package.zip
 trained
 results
-ensemble
+ensemble_models
