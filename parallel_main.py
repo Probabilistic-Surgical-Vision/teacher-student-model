@@ -16,7 +16,7 @@ from torchvision import transforms
 import yaml
 import json
 
-from loaders import DaVinciDataset, CityScapesDataset
+from loaders import DaVinciDataset, SCAREDDataset
 from model import RandomlyConnectedModel, RandomDiscriminator
 
 import train
@@ -28,9 +28,9 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('config', type=str,
                     help='The config file path to build the model from.')
-parser.add_argument('dataset', choices=['da-vinci', 'cityscapes'],
+parser.add_argument('dataset', choices=['da-vinci', 'scared'],
                     help='The dataset to use for training (must be'
-                    'either "da-vinci" or "cityscapes").')
+                    'either "da-vinci" or "scared").')
 parser.add_argument('--epochs', '-e', default=200, type=int,
                     help='The number of epochs to train the model for.')
 parser.add_argument('--learning-rate', '-lr', default=1e-4, type=float,
@@ -81,7 +81,7 @@ parser.add_argument('--debug-distributed', action='store_true', default=False,
                     help='Set torch.distributed logging to "DETAILED".')
 
 
-def main(gpu_index: int, args: argparse.Namespace):
+def main(gpu_index: int, args: argparse.Namespace) -> None:
     rank = (args.global_rank * args.number_of_gpus) + gpu_index
     dist.init_process_group(backend='nccl', init_method='env://',
                             world_size=args.world_size, rank=rank)
@@ -106,7 +106,7 @@ def main(gpu_index: int, args: argparse.Namespace):
     val_label = 'test' if args.dataset == 'da-vinci' else 'val'
     dataset_path = os.path.join(args.home, 'datasets', args.dataset)
     dataset_class = DaVinciDataset if args.dataset == 'da-vinci' \
-        else CityScapesDataset
+        else SCAREDDataset
 
     with open(args.config) as f:
         config = yaml.load(f, Loader=yaml.Loader)

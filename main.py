@@ -11,7 +11,7 @@ from torchvision import transforms
 import yaml
 import json
 
-from loaders import DaVinciDataset, CityScapesDataset
+from loaders import DaVinciDataset, SCAREDDataset
 from model import RandomlyConnectedModel, RandomDiscriminator
 
 import train
@@ -23,9 +23,9 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('config', type=str,
                     help='The config file path to build the model from.')
-parser.add_argument('dataset', choices=['da-vinci', 'cityscapes'],
+parser.add_argument('dataset', choices=['da-vinci', 'scared'],
                     help='The dataset to use for training (must be'
-                    'either "da-vinci" or "cityscapes").')
+                    'either "da-vinci" or "scared").')
 parser.add_argument('--epochs', '-e', default=200, type=int,
                     help='The number of epochs to train the model for.')
 parser.add_argument('--learning-rate', '-lr', default=1e-4, type=float,
@@ -60,7 +60,7 @@ parser.add_argument('--home', default=os.environ['HOME'], type=str,
                     help='Override the home directory (to find datasets).')
 
 
-def main(args: argparse.Namespace):
+def main(args: argparse.Namespace) -> None:
     print("Arguments passed:")
     for key, value in vars(args).items():
         print(f'\t- {key}: {value}')
@@ -68,7 +68,7 @@ def main(args: argparse.Namespace):
     val_label = 'test' if args.dataset == 'da-vinci' else 'val'
     dataset_path = os.path.join(args.home, 'datasets', args.dataset)
     dataset_class = DaVinciDataset if args.dataset == 'da-vinci' \
-        else CityScapesDataset
+        else SCAREDDataset
 
     device = torch.device('cuda') if torch.cuda.is_available() \
         and not args.no_cuda else torch.device('cpu')
