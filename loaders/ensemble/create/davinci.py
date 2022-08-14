@@ -5,7 +5,12 @@ import glob
 from collections import OrderedDict
 from typing import Optional, Union
 
+import numpy as np
+
+import tifffile
+
 import torch
+from torch import Tensor
 from torch.nn import Module
 from torch.utils.data import Dataset, DataLoader
 
@@ -20,7 +25,8 @@ class CreateDaVinciEnsembleDataset(Dataset):
 
     def __init__(self, models_path: str, davinci_path: str,
                  split: str = 'train', batch_size: int = 8,
-                 transform: Optional[object] = None) -> None:
+                 transform: Optional[object] = None,
+                 workers: int = 8) -> None:
 
         self.model_states = []
         self.dataset_path = davinci_path
@@ -33,8 +39,9 @@ class CreateDaVinciEnsembleDataset(Dataset):
 
             self.model_states.append(model_state)
     
-        self.dataset = DaVinciDataset(davinci_path, split, transform, limit=32)
-        self.dataloader = DataLoader(self.dataset, batch_size, shuffle=False)
+        self.dataset = DaVinciDataset(davinci_path, split, transform)
+        self.dataloader = DataLoader(self.dataset, batch_size,
+                                     shuffle=False, num_workers=workers)
         
         print(f'Size of da Vinci Dataset: {len(self.dataset):,}')
     
@@ -42,49 +49,22 @@ class CreateDaVinciEnsembleDataset(Dataset):
         state_dict = torch.load(model_path)
         return {k.replace("module.", ""): v for k, v in state_dict.items()}
     
-    def get_ensemble_predictions(self, save_to: str, device: Device) -> None:
+    torch.no_grad()
+    def ensemble_predict(self, image: Tensor, model: Module) -> Tensor:
 
-        etimations_glob = os.path.join(save_to, '*.pt')
-        estimations_paths = glob.glob(etimations_glob)
+        predictions = []
 
-        description = f'Calculating Mean and Variance'
-        tepoch = tqdm.tqdm(estimations_paths, description, unit='prediction')
+        for state_dict in self.model_states:
+            model.load_state_dict(state_dict)
+            prediction = model(image)
 
-        for estimations_path in tepoch:
-            estimations = torch.load(estimations_path, map_location=device)
-            
-            mean = estimations.mean(dim=0)
-            variance = estimations.var(dim=0)
-            
-            print(variance)
+            predictions.append(prediction)
+        
+        predictions = torch.stack(predictions)
+        mean = predictions.mean(dim=0)
+        variance = predictions.var(dim=0)
 
-            combined = torch.cat((mean, variance), dim=0)
-            
-            print(estimations.shape, combined.shape)
-            
-            torch.save(combined, estimations_path)
-
-    def get_model_predictions(self, model: Module, model_number: int,
-                              save_to: str, device: Device) -> None:
-        description = f'Model #{model_number}'
-        tepoch = tqdm.tqdm(self.dataloader, description, unit='batch')
-
-        for i, image_pair in enumerate(tepoch):
-            left = image_pair['left'].to(device)
-            predictions = model(left)
-
-            for j, estimation in enumerate(predictions):
-                estimation = estimation.unsqueeze(0)
-                image_id = (self.batch_size * i) + j + 1
-                filename = f'ensemble_{image_id:04}.pt'
-                filepath = os.path.join(save_to, filename)
-
-                if os.path.isfile(filepath):
-                    prev_estimations = torch.load(filepath,
-                                                  map_location=device)
-                    estimation = torch.cat((prev_estimations, estimation))
-
-                torch.save(estimation, filepath)
+        return torch.cat((mean, variance), dim=1)
 
     @torch.no_grad()
     def create(self, blank_model: Module, save_to: Optional[str],
@@ -99,8 +79,18 @@ class CreateDaVinciEnsembleDataset(Dataset):
         model = blank_model.to(device)
         model.eval()
 
-        for i, state_dict in enumerate(self.model_states):
-            model.load_state_dict(state_dict)
-            self.get_model_predictions(model, (i+1), save_to, device)
+        tepoch = tqdm.tqdm(self.dataloader, unit='batch')
 
-        self.get_ensemble_predictions(save_to, device)
+        for i, image_pair in enumerate(tepoch):
+            left = image_pair['left'].to(device)
+            estimations = self.ensemble_predict(left, model)
+
+            for j, estimation in enumerate(estimations):
+                image_id = (self.batch_size * i) + j + 1
+                filename = f'ensemble_{image_id:04}.tiff'
+                filepath = os.path.join(save_to, filename)
+                
+                estimation = estimation.cpu().numpy() \
+                    .astype(np.float32)
+
+                tifffile.imwrite(filepath, estimation)

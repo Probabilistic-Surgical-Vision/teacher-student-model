@@ -24,6 +24,8 @@ parser.add_argument('--batch-size', '-b', default=8, type=int,
                     help='The batch size to train/evaluate the model with.')
 parser.add_argument('--split', choices=['train', 'test'], default='train',
                     help='The dataset to generate ensemble predictions for.')
+parser.add_argument('--workers', '-w', default=8, type=int,
+                    help='The number of workers to use for the dataloader.')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='Prevent program from training model using cuda.')
 parser.add_argument('--home', default=os.environ['HOME'], type=str,
@@ -47,7 +49,7 @@ def main(args: argparse.Namespace) -> None:
 
     creator = creator_class(args.models, dataset_path,
                             args.split, args.batch_size,
-                            transform)
+                            transform, args.workers)
 
     ensemble_config_path = os.path.join(args.models, 'config.yml')
     with open(ensemble_config_path) as f:
@@ -59,7 +61,7 @@ def main(args: argparse.Namespace) -> None:
     
     blank_model = RandomlyConnectedModel(**ensemble_config)
 
-    creator.create(blank_model, args.save_to, device)
+    creator.create(blank_model, args.save_to, args.workers, device)
 
     print(f'Ensemble dataset for "{args.dataset}" completed.')
 
