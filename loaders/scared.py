@@ -23,9 +23,9 @@ class SCAREDDataset(Dataset):
         if split not in ('train', 'test'):
             raise ValueError('Split must be either "train" or "test".')
 
-        left_glob = os.path.join(root, split, '**', 'images',
+        left_glob = os.path.join(root, split, 'dataset_*', 'keyframe_*',
                                  self.LEFT_PATH, f'*.{self.EXTENSION}')
-        right_glob = os.path.join(root, split, '**', 'images',
+        right_glob = os.path.join(root, split, 'dataset_*', 'keyframe_*',
                                   self.RIGHT_PATH, f'*.{self.EXTENSION}')
 
         left_images = glob.glob(left_glob)
