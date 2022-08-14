@@ -17,7 +17,7 @@ from ...scared import SCAREDDataset
 Device = Union[str, torch.device]
 
 
-class CreatescaredEnsembleDataset(Dataset):
+class CreateSCAREDEnsembleDataset(Dataset):
 
     def __init__(self, models_path: str, scared_path: str,
                  split: str = 'train', batch_size: int = 8,
@@ -78,7 +78,7 @@ class CreatescaredEnsembleDataset(Dataset):
 
         for i, image_pair in enumerate(tepoch):
             left = image_pair['left'].to(device)
-            estimations = self.ensemble_predict(left, model, device)
+            estimations = self.ensemble_predict(left, model)
 
             for j, estimation in enumerate(estimations):
                 estimation = estimation.squeeze()
