@@ -61,7 +61,7 @@ def main(args: argparse.Namespace) -> None:
     
     blank_model = RandomlyConnectedModel(**ensemble_config)
 
-    creator.create(blank_model, args.save_to, args.workers, device)
+    creator.create(blank_model, args.save_to, device)
 
     print(f'Ensemble dataset for "{args.dataset}" completed.')
 
