@@ -3,7 +3,11 @@ import os.path
 import glob
 
 from collections import OrderedDict
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
+
+import numpy as np
+
+import tifffile
 
 import torch
 from torch import Tensor
@@ -21,7 +25,8 @@ class CreateSCAREDEnsembleDataset(Dataset):
 
     def __init__(self, models_path: str, scared_path: str,
                  split: str = 'train', batch_size: int = 8,
-                 transform: Optional[object] = None) -> None:
+                 transform: Optional[object] = None,
+                 workers: int = 8) -> None:
 
         self.model_states = []
         self.dataset_path = scared_path
@@ -35,7 +40,8 @@ class CreateSCAREDEnsembleDataset(Dataset):
             self.model_states.append(model_state)
     
         self.dataset = SCAREDDataset(scared_path, split, transform)
-        self.dataloader = DataLoader(self.dataset, batch_size, shuffle=False)
+        self.dataloader = DataLoader(self.dataset, batch_size,
+                                     shuffle=False, num_workers=workers)
         
         print(f'Size of SCARED Dataset: {len(self.dataset):,}')
     
@@ -43,24 +49,22 @@ class CreateSCAREDEnsembleDataset(Dataset):
         state_dict = torch.load(model_path)
         return {k.replace("module.", ""): v for k, v in state_dict.items()}
     
-    def ensemble_predict(self, image: Tensor,
-                         model: Module) -> Tuple[Tensor, Tensor]:
+    torch.no_grad()
+    def ensemble_predict(self, image: Tensor, model: Module) -> Tensor:
 
         predictions = []
 
         for state_dict in self.model_states:
             model.load_state_dict(state_dict)
-
             prediction = model(image)
+
             predictions.append(prediction)
-                
+        
         predictions = torch.stack(predictions)
         mean = predictions.mean(dim=0)
         variance = predictions.var(dim=0)
 
-        combined = torch.cat((mean, variance), dim=1)
-
-        return torch.split(combined, 1, dim=0)
+        return torch.cat((mean, variance), dim=1)
 
     @torch.no_grad()
     def create(self, blank_model: Module, save_to: Optional[str],
@@ -71,20 +75,22 @@ class CreateSCAREDEnsembleDataset(Dataset):
             print(f'Saving predictions to:\n\t{save_to}')
 
         os.makedirs(save_to, exist_ok=True)
-        tepoch = tqdm.tqdm(self.dataloader, unit='batch')
 
         model = blank_model.to(device)
         model.eval()
+
+        tepoch = tqdm.tqdm(self.dataloader, unit='batch')
 
         for i, image_pair in enumerate(tepoch):
             left = image_pair['left'].to(device)
             estimations = self.ensemble_predict(left, model)
 
             for j, estimation in enumerate(estimations):
-                estimation = estimation.squeeze()
-
                 image_id = (self.batch_size * i) + j + 1
-                filename = f'ensemble_{image_id:04}.pt'
+                filename = f'ensemble_{image_id:04}.tiff'
                 filepath = os.path.join(save_to, filename)
+                
+                estimation = estimation.cpu().numpy() \
+                    .astype(np.float32)
 
-                torch.save(estimation, filepath)
+                tifffile.imwrite(filepath, estimation)
