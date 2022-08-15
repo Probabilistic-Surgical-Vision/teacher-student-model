@@ -165,7 +165,7 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
     validation_losses = []
 
     for i in range(epochs):
-        scale = 1 if finetune else u.adjust_disparity_scale(epoch=i) 
+        scale = 1 if finetune else u.adjust_disparity_scale(epoch=i)
 
         loss = train_one_epoch(model, loader, loss_function, model_optimiser,
                                scale, disc, disc_optimiser,

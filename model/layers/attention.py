@@ -5,7 +5,21 @@ from torch import Tensor
 
 
 class EfficientAttention(nn.Module):
+    """Efficient version of the dot-product attention mechanism.
 
+    Based off:
+        https://arxiv.org/abs/1812.01243
+
+    Code adapted from:
+        https://github.com/cmsflash/efficient-attention
+
+    Args:
+        image_channels (int): The number of channels the input image has.
+        key_channels (int): The total channels of the key and query tensors.
+        value_channels (int): The total channels of the value tensor.
+        head_size (int): The number of heads to split the key, query and
+            value tensors by.
+    """
     def __init__(self, image_channels: int, key_channels: int,
                  value_channels: int, head_size: int) -> None:
 

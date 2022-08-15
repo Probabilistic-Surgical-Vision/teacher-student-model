@@ -19,7 +19,20 @@ StrideSize = Union[int, Tuple[int, int]]
 
 
 class ConvELUBlock(nn.Module):
+    """A standard convolutional block used in the encoder architecture.
 
+    The layer consists of:
+    - Zero-padding.
+    - Convolution.
+    - Batch Normalisation.
+    - ELU activation.
+
+    Args:
+        in_channels (int): The input image channels.
+        out_channels (int): The output image channels.
+        kernel_size (KernelSize): The convolution kernel size.
+        stride (StrideSize): The convolution stride.
+    """
     def __init__(self, in_channels: int, out_channels: int,
                  kernel_size: KernelSize, stride: StrideSize) -> None:
 
@@ -40,7 +53,22 @@ class ConvELUBlock(nn.Module):
 
 
 class NodeBlock(nn.Module):
+    """The convolutional block for each node in a randomly connected graph.
 
+    For each node, if it is the first node in the graph (i.e. the input node)
+    then it will reduce the size of the image. Otherwise, it will only
+    transform the image without changing its size.
+
+    If the node receives input from other nodes, it will calculate its output
+    from a learnable-weighted sum of its inputs.
+
+    Args:
+        node (Node): A NamedTuple containing the node ID, type and the
+            nodes it receives inputs from.
+        in_channels (int): The input image channels.
+        out_channels (int): The output image channels.
+        kernel_size (KernelSize): The convolution kernel size.
+    """
     def __init__(self, node: Node, in_channels: int, out_channels: int,
                  kernel_size: KernelSize) -> None:
 
@@ -62,6 +90,15 @@ class NodeBlock(nn.Module):
                                         kernel_size, stride=stride)
 
     def resize(self, x: Tensor, desired_size: Size) -> Tensor:
+        """Resize an image to the desired size with zero-padding.
+
+        Args:
+            x (Tensor): The input image,
+            desired_size (Size): The desired size of the image.
+
+        Returns:
+            Tensor: The input image resized with zero-padding.
+        """
         _, _, input_h, input_w = x.size()
         _, _, desired_h, desired_w = desired_size
 
@@ -75,7 +112,7 @@ class NodeBlock(nn.Module):
 
         return F.pad(x, pad_size, mode='reflect')
 
-    def forward(self, *inputs) -> Tensor:
+    def forward(self, *inputs: Tensor) -> Tensor:
         if self.numberof_inputs > 1:
             out = torch.sigmoid(self.mean_weight[0]) * inputs[0]
 
@@ -91,7 +128,17 @@ class NodeBlock(nn.Module):
 
 
 class GraphBlock(nn.Module):
+    """The convolution block for a graph with randomly connected nodes.
 
+    This class builds on top of the NodeBlock class by organising all node
+    blocks and feeding the correct inputs into each one.
+
+    Args:
+        graph (Graph): The `networkx` graph to build NodeBlocks from.
+        in_channels (int): The input image channels.
+        out_channels (int): The output image channels.
+        kernel_size (KernelSize): The convolution kernel size.
+    """
     def __init__(self, graph: Graph, in_channels: int, out_channels: int,
                  kernel_size: KernelSize) -> None:
 
@@ -106,6 +153,15 @@ class GraphBlock(nn.Module):
             self.node_blocks.append(block)
 
     def resize(self, x: Tensor, desired_size: Size) -> Tensor:
+        """Resize an image to the desired size with zero-padding.
+
+        Args:
+            x (Tensor): The input image,
+            desired_size (Size): The desired size of the image.
+
+        Returns:
+            Tensor: The input image resized with zero-padding.
+        """
         _, _, output_h, output_w = x.size()
         _, _, desired_h, desired_w = desired_size
 
@@ -143,7 +199,32 @@ class GraphBlock(nn.Module):
 
 
 class EncoderStage(nn.Module):
+    """A single encoder stage for the model.
 
+    Note:
+        If `load_graph` is specified, it will override all parameters for
+        building graphs.
+
+    Args:
+        in_channels (int): The input image channels.
+        out_channels (int): The output image channels.
+        kernel_size (KernelSize): The convolution kernel size.
+        stage (int): The stage number of the encoder (for building new graphs
+            with a cascaded random search).
+        heads (int, optional): The attention heads. Defaults to 8.
+        nodes (int, optional): The number of nodes per graph. Defaults to 5.
+        p (float, optional): The probability of forming an edge between two
+            nodes. Defaults to 0.75.
+        k (int, optional): The k-nearest neighbours to form edges with for
+            each node. Defaults to 4.
+        seed (Optional[int], optional): The random seed for building new
+            graphs. Defaults to None.
+        load_graph (Optional[str], optional): The path to a directory
+            containing all graphs for each stage in a `gpickle` format.
+            Defaults to None.
+        save_graph (Optional[str], optional): The directory to save new graphs
+            to. Defaults to None.
+    """
     def __init__(self, in_channels: int, out_channels: int,
                  kernel_size: KernelSize, stage: int, heads: int = 8,
                  nodes: int = 5, p: float = 0.75, k: int = 4,

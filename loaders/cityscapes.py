@@ -12,7 +12,27 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class CityScapesDataset(Dataset):
+    """Dataset class for loading CityScapes 8-bit images.
 
+    Given the root of the dataset path, this class will find all left and
+    right `.png` images and collect each pair as a dictionary of Tensors.
+
+    If there are any missing image IDs from either left or right folders,
+    the pair is ignored.
+
+    Note:
+        Transforms must be able to handle dictionaries containing left and
+        right views as separate entries.
+
+    Args:
+        root (str): Path to the root of the dataset directory.
+        split (str): The folder in the dataset to use. Must be "train", "val"
+            or "test".
+        transform (Optional[object], optional): The transforms to apply to
+            each image pair while loading. Defaults to None.
+        limit (Optional[int], optional): The maximum number of images to load.
+            Loads all images if None. Defaults to None.
+    """
     LEFT_PATH = 'leftImg8bit'
     RIGHT_PATH = 'rightImg8bit'
     EXTENSION = 'png'
@@ -52,12 +72,30 @@ class CityScapesDataset(Dataset):
         self.transform = transform
 
     def image_ids(self, image_paths: List[str]) -> List[str]:
+        """Retrieve image ids given all their basenames.
+
+        If a match cannot be made, the image basename is ignored.
+
+        Args:
+            image_paths (List[str]): The list of image basenames.
+        Returns:
+            List[str]: A list of image IDs in the order they were passed.
+        """
         basenames = map(os.path.basename, image_paths)
         matches = map(self.FILENAME_REGEX.match, basenames)
 
         return [m.group(1) for m in matches if m is not None]
 
     def __getitem__(self, idx: int) -> Dict[str, Tensor]:
+        """Retrieve a single sample from the dataset.
+
+        Args:
+            idx (int): The index of the sample in the dataset.
+
+        Returns:
+            Dict[str, Tensor]: The left and right images packaged as a
+                dictionary containing `left` and `right` keys.
+        """
         left_path = self.lefts[idx]
         right_path = self.rights[idx]
 

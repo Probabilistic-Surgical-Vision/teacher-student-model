@@ -18,7 +18,20 @@ def save_comparisons(image: Tensor, prediction: Tensor,
                      recon: Tensor, error: Tensor, directory: str,
                      epoch_number: Optional[int] = None,
                      is_final: bool = True, device: Device = 'cpu') -> None:
+    """Save a .png comparing the original image, prediction and error images.
 
+    Args:
+        image (Tensor): The original image pair.
+        prediction (Tensor): The disparity image pair.
+        recon (Tensor): The reconstructed image pair.
+        error (Tensor): The true error image pair.
+        directory (str): The directory to save the result to.
+        epoch_number (Optional[int], optional): The epoch number for creating
+            a filename. Defaults to None.
+        is_final (bool, optional): Forces the filename to be `final.png`.
+            Defaults to True.
+        device (Device, optional): The torch device to use. Defaults to 'cpu'.
+    """
     disparity, uncertainty = torch.split(prediction, [2, 2], dim=0)
     left_error, right_error = torch.split(error, [3, 3], dim=0)
     error = torch.cat((left_error.mean(0, True), right_error.mean(0, True)))
@@ -57,7 +70,36 @@ def evaluate_model(model: Module, loader: DataLoader,
                    scales: int = 4, device: Device = 'cpu',
                    no_pbar: bool = False,
                    rank: int = 0) -> Tuple[float, float]:
+    """Loop through the validation set and report model losses.
 
+    Args:
+        model (Module): The model to test.
+        loader (DataLoader): The validation loader to iterate through.
+        loss_function (Module): The loss function to report.
+        scale (float, optional): A multiplier to scale the model's predictions
+            by. Defaults to 1.0.
+        disc (Optional[Module], optional): The discriminator to test.
+            Defaults to None.
+        disc_loss_function (Optional[Module], optional): The discriminator
+            loss functions to report. Defaults to None.
+        save_evaluation_to (Optional[str], optional): Path to the directory to
+            save comparison images to. Defaults to None.
+        epoch_number (Optional[int], optional): The epoch number in training.
+            Defaults to None.
+        is_final (bool, optional): The evaluation is taking place
+            post-training. Defaults to True.
+        scales (int, optional): The size of the image pyramid. Defaults to 4.
+        device (Device, optional): The torch device to use. Defaults to 'cpu'.
+        no_pbar (bool, optional): Disable `tqdm` progress bar. Defaults to
+            False.
+        rank (int, optional): The rank of the process (for multiprocessing
+            only). Defaults to 0.
+
+    Returns:
+        float: The average disparity loss per image.
+        float: The average uncertainty loss per image.
+        float: The average discriminator loss per image.
+    """
     running_disp_loss = 0
     running_error_loss = 0
     running_disc_loss = 0

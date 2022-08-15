@@ -9,7 +9,25 @@ KernelSize = Union[int, Tuple[int, int]]
 
 
 class ConvLayer(nn.Module):
+    """A standard convolutional layer used in the decoder architecture.
 
+    The layer consists of:
+    - Padding (optional).
+    - Convolution.
+    - Sigmoid activation (optional).
+
+    Args:
+        in_channels (int): The input image channels.
+        out_channels (int): The output image image channels.
+        padding (bool, optional): Apply padding prior to the convolution.
+            Defaults to True.
+        reflection (bool, optional): Use reflection padding over zero padding.
+            Defaults to True.
+        sigmoid (bool, optional): Apply sigmoid padding after the convolution.
+            Defaults to False.
+        kernel_size (KernelSize, optional): The convolution kernel size.
+            Defaults to 3.
+    """
     def __init__(self, in_channels: int, out_channels: int,
                  padding: bool = True, reflection: bool = True,
                  sigmoid: bool = False, kernel_size: KernelSize = 3) -> None:
@@ -35,7 +53,23 @@ class ConvLayer(nn.Module):
 
 
 class ConvELUBlock(nn.Module):
+    """A standard convolutional block used in the decoder architecture.
 
+    The layer consists of:
+    - ConvLayer.
+    - Batch Normalisation (optional)
+    - ELU activation.
+
+    Args:
+        in_channels (int): The input image channels.
+        out_channels (int): The output image channels.
+        padding (bool, optional): Apply padding prior to the convolution.
+            Defaults to True.
+        kernel_size (KernelSize, optional): The convolution kernel size.
+            Defaults to 3.
+        batch_norm (bool, optional): Apply batch normalisation after the
+            convolution. Defaults to False.
+    """
     def __init__(self, in_channels: int, out_channels: int,
                  padding: bool = True, kernel_size: KernelSize = 3,
                  batch_norm: bool = False) -> None:
@@ -54,7 +88,18 @@ class ConvELUBlock(nn.Module):
 
 
 class SELayer(nn.Module):
+    """A squeeze-excitation layer for PyTorch.
 
+    Code adapted from:
+        https://github.com/moskomule/senet.pytorch
+
+    Args:
+        channels (int): The number of input (and output) channels.
+        reduction (int, optional): The intermediate number of channels used
+            for excitation. Defaults to 16.
+        fc (bool, optional): Use a fully-connected layer rather than a
+            convolutional layer. Defaults to True.
+    """
     def __init__(self, channels: int, reduction: int = 16,
                  fc: bool = True) -> None:
 
@@ -92,7 +137,39 @@ class SELayer(nn.Module):
 
 
 class DecoderStage(nn.Module):
+    """A single decoder stage for the model.
 
+    There are four elements to the decoder stage:
+    - Upsample: Transforms the input image into a feature map and upsamples
+        it using PixelShuffle.
+    - Squeeze-excite: Applies channel-wise attention to the input feature map
+        and skip connection to produce the output skip connection.
+    - Inverse convolution: Creates the output image given the input image,
+        output skip and (optionally) the disparity.
+    - Disparity convolution: Calculates the dispairity image given the
+        output image.
+
+    Args:
+        in_channels (int): The input image channels.
+        feature_in_channels (int): The input feature map channels.
+        skip_in_channels (int): The input skip connection channels.
+        upsample_channels (int): The number of channels in the intermediate
+            upsampled representation of the input image.
+        out_channels (int): The output image channels.
+        skip_out_channels (int): The output skip connection channels.
+        disp_channels (int, optional): The input and output disparity image
+            channels. Defaults to 2.
+        batch_norm (bool, optional): Apply batch normalisation after each
+            convolution. Defaults to True.
+        fc (bool, optional): Use a fully-connected layer rather than a
+            convolutional layer for each squeeze-excitation block. Defaults
+            to True.
+        scale (int, optional): The upsample factor. Defaults to 2.
+        concat_disp (bool, optional): Add disparity to the input and skip
+            connection before convolution. Defaults to True.
+        calculate_disp (bool, optional): Calculate a prediction for the
+            disparity. Defaults to True.
+    """
     DecoderOut = Tuple[Tensor, Tensor, Optional[Tensor]]
 
     def __init__(self, in_channels: int, feature_in_channels: int,
@@ -133,7 +210,23 @@ class DecoderStage(nn.Module):
     def forward(self, x: Tensor, feature_map: Tensor, skip: Tensor,
                 disparity: Optional[Tensor] = None,
                 scale: Optional[float] = 1.0) -> DecoderOut:
+        """Get the output image, skip connection and (optional) disparity.
 
+        Args:
+            x (Tensor): The input image from the previous decoder layer.
+            feature_map (Tensor): The input feature map.
+            skip (Tensor): The input skip connection.
+            disparity (Optional[Tensor], optional): The input dispairty image.
+                Not required if `concat_disp` is False. Defaults to None.
+            scale (Optional[float], optional): A multiplier to scale the
+                disparity image by. Not required if `calculate_disp` is
+                False. Defaults to 1.0.
+
+        Returns:
+            Tensor: The output image.
+            Tensor: The output skip connection.
+            Optional[Tensor]: The output disparity image.
+        """
         skip = F.interpolate(skip, scale_factor=self.scale,
                              align_corners=True, mode='bilinear')
 

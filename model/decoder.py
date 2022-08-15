@@ -9,8 +9,17 @@ DecoderOut = Union[Tuple[Tensor, ...], Tensor]
 
 
 class DepthDecoder(nn.Module):
+    """The full decoder architectue module.
 
+    Note:
+        This version is currently limited to 5 decoder stages.
+
+    Args:
+        layers (List[dict]): A list of configs for each decoder stage. These
+            are unpacked and passed as kwargs to each stage.
+    """
     def __init__(self, layers: List[dict]) -> None:
+
         super().__init__()
 
         self.layers = nn.ModuleList()
@@ -23,8 +32,20 @@ class DepthDecoder(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
 
     def forward(self, left_image: Tensor, *feature_maps: Tensor,
-                scale: float = 1.0) -> DecoderOut:
+                scale: float = 1) -> DecoderOut:
+        """Estimate disparity given the left image and encoder feature maps.
 
+        Args:
+            left_image (Tensor): The original left image.
+            *feature_maps: (Tensor): The feature maps from the encoder.
+            scale (float, optional): A multiplier to scale the disparity from
+                each decoder stage. Defaults to 1.
+
+        Returns:
+            Tuple[Tensor]: If in `.train()` mode, the model will return the
+                disparity image from each stage. If in `.eval()` mode, the
+                model will only return the final disparity.
+        """
         f1, f2, f3, f4, x4 = feature_maps
 
         out5, skip5, _ = self.layers[0](x4, f4, x4, scale=scale)

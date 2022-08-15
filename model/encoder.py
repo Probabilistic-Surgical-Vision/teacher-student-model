@@ -7,6 +7,22 @@ from .layers.encoder import EncoderStage
 
 
 class RandomEncoder(nn.Module):
+    """The full encoder architecture module.
+
+    Note:
+        If `load_graph` is specified, it will override all parameters for
+        building graphs.
+
+    Args:
+        layers (List[dict]): A list of configs for each encoder stage. These
+            are unpacked and passed as kwargs to each stage.
+        load_graph (Optional[str], optional): The path to a directory
+            containing all graphs for each stage in a `gpickle` format.
+            Defaults to None.
+        nodes (int, optional): The number of nodes per graph. Defaults to 5.
+        seed (Optional[int], optional): The random seed for building new
+            graphs. Defaults to 42.
+    """
     def __init__(self, layers: List[dict], load_graph: Optional[str] = None,
                  nodes: int = 5, seed: int = 42) -> None:
 
