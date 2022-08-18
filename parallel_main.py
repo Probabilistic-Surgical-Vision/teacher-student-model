@@ -182,7 +182,7 @@ def main(gpu_index: int, args: argparse.Namespace) -> None:
 
     if args.finetune_from is not None:
         state_dict = torch.load(args.finetune_from)
-        
+
         if disc is not None:
             model_state = state_dict['model']
             disc_state = state_dict['disc']
@@ -190,7 +190,7 @@ def main(gpu_index: int, args: argparse.Namespace) -> None:
             disc.load_state_dict(disc_state)
         else:
             model_state = state_dict
-        
+
         model.load_state_dict(model_state)
 
     date = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -223,7 +223,7 @@ def main(gpu_index: int, args: argparse.Namespace) -> None:
         losses_filepath = os.path.join(results_directory, 'results.json')
 
         (disp_train_losses, error_train_losses,
-        disc_train_losses) = zip(*training_losses)
+         disc_train_losses) = zip(*training_losses)
 
         disc_train_losses = disc_train_losses if args.adversarial else None
 
@@ -241,7 +241,7 @@ def main(gpu_index: int, args: argparse.Namespace) -> None:
 
         if len(validation_losses) > 0:
             (disp_val_losses, error_val_losses,
-            disc_val_losses) = zip(*validation_losses)
+             disc_val_losses) = zip(*validation_losses)
 
             disc_val_losses = disc_val_losses if args.adversarial else None
 

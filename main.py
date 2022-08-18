@@ -127,7 +127,7 @@ def main(args: argparse.Namespace) -> None:
 
     if args.finetune_from is not None:
         state_dict = torch.load(args.finetune_from)
-        
+
         if disc is not None:
             model_state = u.prepare_state_dict(state_dict['model'])
             disc_state = u.prepare_state_dict(state_dict['disc'])
@@ -135,9 +135,9 @@ def main(args: argparse.Namespace) -> None:
             disc.load_state_dict(disc_state)
         else:
             model_state = u.prepare_state_dict(state_dict)
-        
+
         model.load_state_dict(model_state)
-        
+
     date = datetime.now().strftime('%Y%m%d%H%M%S')
     folder = f'model_{date}'
 
@@ -168,7 +168,7 @@ def main(args: argparse.Namespace) -> None:
         losses_filepath = os.path.join(results_directory, 'results.json')
 
         (disp_train_losses, error_train_losses,
-        disc_train_losses) = zip(*training_losses)
+         disc_train_losses) = zip(*training_losses)
 
         disc_train_losses = disc_train_losses if args.adversarial else None
 
@@ -186,7 +186,7 @@ def main(args: argparse.Namespace) -> None:
 
         if len(validation_losses) > 0:
             (disp_val_losses, error_val_losses,
-            disc_val_losses) = zip(*validation_losses)
+             disc_val_losses) = zip(*validation_losses)
 
             disc_val_losses = disc_val_losses if args.adversarial else None
 

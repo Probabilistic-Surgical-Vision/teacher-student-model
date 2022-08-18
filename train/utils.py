@@ -155,8 +155,8 @@ def adjust_disparity_scale(epoch: int, m: float = 0.02, c: float = 0.0,
         epoch (int): The epoch number
         m (float, optional): The gradient of the scaling. Defaults to 0.02.
         c (float, optional): The intercept of the scaling. Defaults to 0.0.
-        step (float, optional): The step between adjacent scales. Defaults to 0.2.
-        offset (float, optional): The offset of the step from 0. Defaults to 0.1.
+        step (float, optional): The step between scales. Defaults to 0.2.
+        offset (float, optional): The step offset from 0. Defaults to 0.1.
         min_scale (float, optional): The minimum scale. Defaults to 0.3.
         max_scale (float, optional): The maximum scale. Defaults to 1.0.
 

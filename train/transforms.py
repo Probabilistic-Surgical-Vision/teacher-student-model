@@ -50,7 +50,7 @@ class ToTensor:
 
 class RandomFlip:
     """Random horizontal flip stereo images grouped in a dictionary.
-    
+
     Args:
         p (float, optional): The probabaility of a horizontal flip. Defaults
             to 0.5.
