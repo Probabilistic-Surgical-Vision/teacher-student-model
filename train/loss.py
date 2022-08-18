@@ -11,7 +11,16 @@ from .utils import ImagePyramid
 from . import utils as u
 
 
-class WeightedSSIMError(nn.Module):
+class WeightedSSIMLoss(nn.Module):
+    """Calculate the SSIM/L1 loss between two images.
+
+    Args:
+        alpha (float, optional): The weight of the SSIM Loss in the overall
+            metric (note that L1 weight is equal to 1 - alpha).
+            Defaults to 0.85.
+        k1 (float, optional): The first SSIM factor. Defaults to 0.01.
+        k2 (float, optional): The second SSIM factor. Defaults to 0.03.
+    """
     def __init__(self, alpha: float = 0.85, k1: float = 0.01,
                  k2: float = 0.03) -> None:
 
@@ -27,10 +36,22 @@ class WeightedSSIMError(nn.Module):
 
     @property
     def previous_image_error(self) -> Tensor:
+        """A temporary variable for the last image error calculated."""
         return self.__previous_image_error
 
     def ssim(self, x: Tensor, y: Tensor) -> Tensor:
+        """Calculate the per-pixel SSIM between two images.
 
+        Note:
+            Both images are average-pooled and therefore smaller.
+
+        Args:
+            x (Tensor): The first image to compare.
+            y (Tensor): The second image to compare.
+
+        Returns:
+            Tensor: The SSIM image (reduced in size by pooling).
+        """
         luminance_x = self.pool(x)
         luminance_y = self.pool(y)
 
@@ -52,13 +73,38 @@ class WeightedSSIMError(nn.Module):
         return numerator / denominator
 
     def dssim(self, x: Tensor, y: Tensor) -> Tensor:
+        """Calculate the Structural Dissimilarity (DSSIM) between two images.
+
+        Note:
+            Both images are average-pooled and therefore smaller.
+
+        Args:
+            x (Tensor): The first image to compare.
+            y (Tensor): The second image to compare.
+
+        Returns:
+            Tensor: The per-pixel DSSIM image (reduced in size by pooling).
+        """
         dissimilarity = (1 - self.ssim(x, y)) / 2
         return torch.clamp(dissimilarity, 0, 1)
 
     def l1_error(self, x: Tensor, y: Tensor) -> Tensor:
+        """Calculate the per-pixel L1 Loss between two tensors."""
         return (x - y).abs()
 
     def image_error(self, images: Tensor, recon: Tensor) -> Tensor:
+        """Calculate the per-pixel weighted SSIM error.
+
+        This is given by:
+            loss = (alpha * DSSIM) + ((1 - alpha) * L1)
+
+        Args:
+            x (Tensor): The first image to compare.
+            y (Tensor): The second image to compare.
+
+        Returns:
+            Tensor: A stereo image of the WSSIM error.
+        """
         _, _, height, width = images.size()
 
         left_l1_error = self.l1_error(images[:, 0:3], recon[:, 0:3])
@@ -76,6 +122,18 @@ class WeightedSSIMError(nn.Module):
         return (self.alpha * ssim_error) + ((1 - self.alpha) * l1_error)
 
     def forward(self, images: Tensor, recon: Tensor) -> Tensor:
+        """Calculate the weighted SSIM loss.
+
+        This is given by:
+            loss = (alpha * DSSIM) + ((1 - alpha) * L1)
+
+        Args:
+            x (Tensor): The first image to compare.
+            y (Tensor): The second image to compare.
+
+        Returns:
+            Tensor: The WSSIM loss as a single float.
+        """
         error = self.image_error(images, recon)
         left_error, right_error = torch.split(error, [3, 3], dim=1)
 
@@ -414,7 +472,7 @@ class TukraEnsembleLoss(nn.Module):
         """
         super().__init__()
 
-        self.wssim = WeightedSSIMError(wssim_alpha)
+        self.wssim = WeightedSSIMLoss(wssim_alpha)
 
         self.consistency = ConsistencyLoss()
         self.smoothness = SmoothnessLoss()
