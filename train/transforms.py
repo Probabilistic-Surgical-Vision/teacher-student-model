@@ -10,13 +10,17 @@ from torchvision import transforms
 
 ImageDict = Dict[str, Tensor]
 BoundsTuple = Tuple[float, float]
-ImageSizeTuple = Tuple[int, int]
+ImageSize = Tuple[int, int]
 
 
 class ResizeImage:
+    """Resize the stereo images grouped in a dictionary.
 
-    def __init__(self, size: ImageSizeTuple = (256, 512)) -> None:
-        self.size = size
+    Args:
+        size (ImageSize, optional): The target image size. Defaults to
+            (256, 512).
+    """
+    def __init__(self, size: ImageSize = (256, 512)) -> None:
         self.transform = transforms.Resize(size)
 
     def __call__(self, image_pair: ImageDict) -> ImageDict:
@@ -33,7 +37,7 @@ class ResizeImage:
 
 
 class ToTensor:
-
+    """Convert stereo PIL images grouped in a dictionary."""
     def __init__(self) -> None:
         self.transform = transforms.ToTensor()
 
@@ -45,7 +49,12 @@ class ToTensor:
 
 
 class RandomFlip:
-
+    """Random horizontal flip stereo images grouped in a dictionary.
+    
+    Args:
+        p (float, optional): The probabaility of a horizontal flip. Defaults
+            to 0.5.
+    """
     def __init__(self, p: float = 0.5) -> None:
         self.probability = p
         self.transform = transforms.RandomHorizontalFlip(1)
@@ -62,7 +71,18 @@ class RandomFlip:
 
 
 class RandomAugment:
+    """Randomly alter the brightness, contrast and colour of stereo images
+    grouped in a dictionary.
 
+    Args:
+        p (float): The probability of augmentation.
+        gamma (BoundsTuple): The range of exponents to randomly sample for
+            contrast.
+        brightness (BoundsTuple): The range of multipliers to randomly sample
+            for brightness.
+        colour (BoundsTuple): The range of multipliers to randomly sample for
+            channel-specific brightness (i.e. altering the colour).
+    """
     def __init__(self, p: float, gamma: BoundsTuple,
                  brightness: BoundsTuple, colour: BoundsTuple) -> None:
 
@@ -73,17 +93,31 @@ class RandomAugment:
         self.colour = colour
 
     def shift_gamma(self, x: Tensor, gamma: torch.float) -> Tensor:
+        """Alter contrast by exponentiating each pixel value."""
         return x ** gamma
 
     def shift_brightness(self, x: Tensor, brightness: torch.float) -> Tensor:
+        """Alter brightness by multiplying each pixel value."""
         return x * brightness
 
     def shift_colour(self, x: Tensor, colour: Tensor) -> Tensor:
+        """Alter colour by multiplying each pixel channel value."""
         return x * colour.unsqueeze(-1).unsqueeze(-1)
 
     def transform(self, x: Tensor, gamma: torch.float, brightness:
                   torch.float, colour: Tensor) -> Tensor:
+        """Apply the augmentation to a single image.
 
+        Args:
+            x (Tensor): The image to augment.
+            gamma (torch.float): The exponent for altering contrast.
+            brightness (torch.float): The multiplier for altering brightness.
+            colour (Tensor): An array of multipliers for altering the
+                brightness of each channel (must have a length of 3).
+
+        Returns:
+            Tensor: The augmented image.
+        """
         x = self.shift_gamma(x, gamma)
         x = self.shift_brightness(x, brightness)
         x = self.shift_colour(x, colour)

@@ -11,15 +11,26 @@ from torch.nn import Module
 
 from torchvision.utils import make_grid
 
+# Type hint definitions
 ImagePyramid = List[Tensor]
 Device = Union[torch.device, str]
 
 
 def l1_loss(x: Tensor, y: Tensor) -> Tensor:
+    """Calculate the L1 loss between two images."""
     return (x - y).abs().mean()
 
 
 def scale_pyramid(x: Tensor, scales: int) -> ImagePyramid:
+    """Create an pyramid of differently sized images using interpolation.
+
+    Args:
+        x (Tensor): The image to create a pyramid from.
+        scales (int): The number of scales in the pyramid.
+
+    Returns:
+        ImagePyramid: The image pyramid.
+    """
     _, _, height, width = x.size()
 
     pyramid = []
@@ -37,10 +48,29 @@ def scale_pyramid(x: Tensor, scales: int) -> ImagePyramid:
 
 
 def detach_pyramid(pyramid: ImagePyramid) -> ImagePyramid:
+    """Detach an image pyramid from the computational graph.
+
+    Args:
+        pyramid (ImagePyramid): The image pyramid to detach.
+
+    Returns:
+        ImagePyramid: A copy of the image pyramid detached from the graph.
+    """
     return [layer.detach().clone() for layer in pyramid]
 
 
 def reconstruct(disparity: Tensor, opposite_image: Tensor) -> Tensor:
+    """Reconstruct an image given its opposite view, and the disparity
+    between the two views.
+
+    Args:
+        disparity (Tensor): The single-channel disparity tensor.
+        opposite_image (Tensor): The three-channel image from the opposite
+            view.
+
+    Returns:
+        Tensor: The reconstructed image.
+    """
     batch_size, _, height, width = opposite_image.size()
 
     # Original coordinates of pixels
@@ -66,19 +96,27 @@ def reconstruct(disparity: Tensor, opposite_image: Tensor) -> Tensor:
 
 def reconstruct_left_image(left_disparity: Tensor,
                            right_image: Tensor) -> Tensor:
-
+    """Reconstruct the left image from the left disparity and right image."""
     return reconstruct(-left_disparity, right_image)
 
 
 def reconstruct_right_image(right_disparity: Tensor,
                             left_image: Tensor) -> Tensor:
-
+    """Reconstruct the right image from the right disparity and left image."""
     return reconstruct(right_disparity, left_image)
 
 
 def reconstruct_pyramid(disparities: ImagePyramid,
                         pyramid: ImagePyramid) -> ImagePyramid:
+    """Apply `reconstruct()` to each scale of the disparity pyramid.
 
+    Args:
+        disparities (ImagePyramid): The disparity at each scale.
+        pyramid (ImagePyramid): The original image pyramid,
+
+    Returns:
+        ImagePyramid: The reconstructed version of the image pyramid.
+    """
     recon_pyramid = []
 
     for disparity, images in zip(disparities, pyramid):
@@ -95,6 +133,7 @@ def reconstruct_pyramid(disparities: ImagePyramid,
 
 
 def concatenate_pyramids(a: ImagePyramid, b: ImagePyramid) -> ImagePyramid:
+    """Concatenate two image pyramids along their channels."""
     return [torch.cat((x, y), 0) for x, y in zip(a, b)]
 
 
@@ -102,7 +141,28 @@ def adjust_disparity_scale(epoch: int, m: float = 0.02, c: float = 0.0,
                            step: float = 0.2, offset: float = 0.1,
                            min_scale: float = 0.3,
                            max_scale: float = 1.0) -> float:
+    """Calculate the disparity scaling of the model given the epoch number.
 
+    The scale is calculated based on a linear equation y = mx + c, where:
+    - x is the epoch number.
+    - y is the disparity scale.
+
+    This is then quantised to specific step and offset. By default, the step
+    and offset are 0.2 and 0.1 respectively, meaning, when the linear
+    equation will round to 0.3, 0.5, 0.9, etc.
+
+    Args:
+        epoch (int): The epoch number
+        m (float, optional): The gradient of the scaling. Defaults to 0.02.
+        c (float, optional): The intercept of the scaling. Defaults to 0.0.
+        step (float, optional): The step between adjacent scales. Defaults to 0.2.
+        offset (float, optional): The offset of the step from 0. Defaults to 0.1.
+        min_scale (float, optional): The minimum scale. Defaults to 0.3.
+        max_scale (float, optional): The maximum scale. Defaults to 1.0.
+
+    Returns:
+        float: The disparity scale.
+    """
     # Transform epoch to continuous scale using m and c
     scale = (epoch * m) + c
     # Quantise to fit the grid defined by step and offset
@@ -113,7 +173,20 @@ def adjust_disparity_scale(epoch: int, m: float = 0.02, c: float = 0.0,
 
 def to_heatmap(x: Tensor, device: Device = 'cpu', inverse: bool = False,
                colour_map: str = 'inferno') -> Tensor:
+    """Convert a single-channel image to an RGB heatmap.
 
+    Args:
+        x (Tensor): The single-channel image to convert.
+        device (Device, optional): The torch device to map the output to.
+            Defaults to 'cpu'.
+        inverse (bool, optional): Reverse the heatmap colours. Defaults to
+            False.
+        colour_map (str, optional): The matpltlib colour map to convert to.
+            Defaults to 'inferno'.
+
+    Returns:
+        Tensor: The single-channel image as an RGB image.
+    """
     image = x.squeeze(0).cpu().numpy()
     image = 1 - image if inverse else image
 
@@ -125,7 +198,28 @@ def to_heatmap(x: Tensor, device: Device = 'cpu', inverse: bool = False,
 
 def combine_disparity(left: Tensor, right: Tensor, device: Device = 'cpu',
                       alpha: float = 20, beta: float = 0.05) -> Tensor:
+    """Combine the disparity from both views to remove blind spots.
 
+    This is based off the codebase from Monodepth2, named
+    `batch_post_process_disparity()`:
+        https://github.com/nianticlabs/monodepth2
+
+    The mask gradient and offset control how quickly the mask for each view
+    approaches zero from the left (for left disparity) or the right (for
+    right disparity). This should be as smooth as possible without revealing
+    the blind spots in the disparity maps.
+
+    Args:
+        left (Tensor): The left disparity.
+        right (Tensor): The right disparity.
+        device (Device, optional): The torch device to map the output to.
+            Defaults to 'cpu'.
+        alpha (float, optional): The gradient of the mask. Defaults to 20.
+        beta (float, optional): The offset of the mask. Defaults to 0.05.
+
+    Returns:
+        Tensor: The combined disparity map.
+    """
     left_disp = left.cpu().numpy()
     right_disp = right.cpu().numpy()
     mean_disp = (left_disp + right_disp) / 2
@@ -153,7 +247,18 @@ def run_discriminator(image_pyramid: ImagePyramid,
                       discriminator: Module,
                       disc_loss_function: Module,
                       batch_size: int) -> Tensor:
+    """Run the discriminator predictions and calculate its loss.
 
+    Args:
+        image_pyramid (ImagePyramid): The original image pyramid.
+        recon_pyramid (ImagePyramid): The reconstructed image pyramid,
+        discriminator (Module): The discriminator model.
+        disc_loss_function (Module): The discriminator loss function.
+        batch_size (int): The batch size of the iteration.
+
+    Returns:
+        Tensor: The discriminator loss.
+    """
     recon_pyramid = detach_pyramid(recon_pyramid)
     pyramid = concatenate_pyramids(image_pyramid, recon_pyramid)
 
@@ -167,7 +272,22 @@ def run_discriminator(image_pyramid: ImagePyramid,
 
 def get_comparison(image: Tensor, prediction: Tensor, extra: Optional[Tensor],
                    add_scaled: bool = False, device: Device = 'cpu') -> Tensor:
+    """Create a comparison image of the image, disparity and reconstruction.
 
+    Args:
+        image (Tensor): The original stereo images.
+        prediction (Tensor): The stereo disparity image.
+        extra (Optional[Tensor]): An extra image to append to the comparison,
+            such as the reconstruction. Must be either 2 or 6 channels (i.e.
+            stereo single-channel or stereo three-channel).
+        add_scaled (bool, optional): Include a scaled version of the
+            disparity. Defaults to False.
+        device (Device, optional): The torch device to map the output to.
+            Defaults to 'cpu'.
+
+    Returns:
+        Tensor: The comparison image.
+    """
     left_image, right_image = torch.split(image, [3, 3], dim=0)
     left_pred, right_pred = torch.split(prediction, [1, 1], dim=0)
 
@@ -203,4 +323,5 @@ def get_comparison(image: Tensor, prediction: Tensor, extra: Optional[Tensor],
 
 
 def prepare_state_dict(state_dict: OrderedDict) -> dict:
+    """Cleanup state dict because of `modules` key in DDP."""
     return {k.replace("module.", ""): v for k, v in state_dict.items()}

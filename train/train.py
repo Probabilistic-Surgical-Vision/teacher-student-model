@@ -23,9 +23,19 @@ def save_model(model: Module, save_model_to: str,
                disc: Optional[Module] = None,
                epoch_number: Optional[int] = None,
                is_final: bool = False) -> None:
+    """Save the model state dict as a `.pt` file.
 
-    if not os.path.isdir(save_model_to):
-        os.makedirs(save_model_to, exist_ok=True)
+    Args:
+        model (Module): The model to save.
+        save_model_to (str): The directory to save the model to.
+        disc (Optional[Module], optional): The discriminator to save (if
+            applicable). Defaults to None.
+        epoch_number (Optional[int], optional): The training epoch (if
+            applicable). Defaults to None.
+        is_final (bool, optional): Flag for saving model after training.
+            Defaults to False.
+    """
+    os.makedirs(save_model_to, exist_ok=True)
 
     filename = 'final.pt' if is_final else f'epoch_{epoch_number:03}.pt'
     filepath = os.path.join(save_model_to, filename)
@@ -51,6 +61,36 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
                     scales: int = 4, perceptual_update_freq: int = 10,
                     device: Device = 'cpu', no_pbar: bool = False,
                     rank: int = 0) -> Tuple[float, float]:
+    """Train the model for a single epoch.
+
+    Args:
+        model (Module): The model to train.
+        loader (DataLoader): The dataloader to iterate through.
+        loss_function (Module): The model loss function.
+        model_optimiser (Optimizer): The model optimiser.
+        scale (float): A multiplier to scale the disparity prediction by.
+        disc (Optional[Module], optional): The discriminator. Defaults to
+            None.
+        disc_optimiser (Optional[Optimizer], optional): The discriminator
+            optimiser. Defaults to None.
+        disc_loss_function (Optional[Module], optional): The discriminator
+            loss function. Defaults to None.
+        epoch_number (Optional[int], optional): The training epoch (for
+            saving models and the progress bar description). Defaults to
+            None.
+        scales (int, optional): The number of elements in the image pyramids.
+            Defaults to 4.
+        perceptual_update_freq (int, optional): The number of batches before
+            updating the discriminator clone. Defaults to 10.
+        device (Device, optional): The torch device. Defaults to 'cpu'.
+        no_pbar (bool, optional): Disable the progress bar. Defaults to False.
+        rank (int, optional): The global rank of the GPU (for
+            DistributedDataParallel only). Defaults to 0.
+
+    Returns:
+        float: The average model loss per image.
+        float: The average discriminator loss per image.
+    """
     model.train()
 
     if disc is not None:
@@ -153,7 +193,45 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
                 device: Device = 'cpu',
                 no_pbar: bool = False,
                 rank: int = 0) -> Tuple[Loss, Loss]:
+    """Train the model for multiple epochs.
 
+    Args:
+        model (Module): The model to train
+        loader (DataLoader): The dataloader for training.
+        loss_function (Module): The model loss function.
+        epochs (int): The number of epochs to train for.
+        learning_rate (float): The initial learning rate.
+        disc (Optional[Module], optional): The discriminator. Defaults to
+            None.
+        disc_loss_function (Optional[Module], optional): The discriminator
+            loss function. Defaults to None.
+        scheduler_decay_rate (float, optional): The rate at which the
+            learning rate is scaled every full step. Defaults to 0.1.
+        scheduler_step_size (int, optional): The number of epochs per full
+            step. Defaults to 15.
+        perceptual_update_freq (int, optional): The number of batches before
+            updating the discriminator clone. Defaults to 10.
+        val_loader (Optional[DataLoader], optional): The dataloader for
+            evaluation. Defaults to None.
+        evaluate_every (Optional[int], optional): The number of epochs per
+            evaluation. Defaults to None.
+        save_evaluation_to (Optional[str], optional): The directory to save
+            evaluation results to. Defaults to None.
+        save_every (Optional[int], optional): The number of epochs between
+            saving the model. Defaults to None.
+        save_model_to (Optional[str], optional): The directory to save model
+            state dicts to. Defaults to None.
+        finetune (bool, optional): Indicates the model is being finetuned.
+            Defaults to False.
+        device (Device, optional): The torch device to use. Defaults to 'cpu'.
+        no_pbar (bool, optional): Disable the progress bar. Defaults to False.
+        rank (int, optional): The global rank of the GPU (for
+            DistributedDataParallel only). Defaults to 0.
+
+    Returns:
+        List[float]: The average model losses at each epoch.
+        List[float]: The average discriminator losses at each epoch.
+    """
     model_optimiser = Adam(model.parameters(), learning_rate)
     disc_optimiser = Adam(disc.parameters(), learning_rate) \
         if disc is not None else None
