@@ -10,3 +10,4 @@ jupyter
 ipython
 nbconvert
 psutil
+tifffile
