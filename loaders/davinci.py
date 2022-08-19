@@ -1,16 +1,20 @@
 import glob
 import os.path
-
+from os.path import basename
 from typing import Dict, Optional
+
 from PIL import Image, ImageFile
 
+import tifffile
+
+import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
-class DaVinciDataset(Dataset):
+class DaVinciEnsembleDataset(Dataset):
     """Dataset class for loading the Hamlyn da Vinci images.
 
     Given the root of the dataset path, this class will find all left and
@@ -34,39 +38,56 @@ class DaVinciDataset(Dataset):
     """
     LEFT_PATH = 'image_0'
     RIGHT_PATH = 'image_1'
-    EXTENSION = 'png'
+    IMAGE_EXT = 'png'
+    ENSEMBLE_EXT = 'tiff'
 
-    def __init__(self, root: str, split: str,
+    def __init__(self, davinci_path: str, ensemble_path: str, split: str,
                  transform: Optional[object] = None,
                  limit: Optional[int] = None) -> None:
 
         if split not in ('train', 'test'):
             raise ValueError('Split must be either "train" or "test".')
 
-        left_glob = os.path.join(root, split, self.LEFT_PATH,
-                                 f'*.{self.EXTENSION}')
+        left_glob = os.path.join(davinci_path, split, self.LEFT_PATH,
+                                 f'*.{self.IMAGE_EXT}')
 
-        right_glob = os.path.join(root, split, self.RIGHT_PATH,
-                                  f'*.{self.EXTENSION}')
+        right_glob = os.path.join(davinci_path, split, self.RIGHT_PATH,
+                                  f'*.{self.IMAGE_EXT}')
 
-        left_images = glob.glob(left_glob)
-        right_images = glob.glob(right_glob)
+        ensemble_glob = os.path.join(ensemble_path, split,
+                                     f'*.{self.ENSEMBLE_EXT}')
 
-        left_names = set(map(os.path.basename, left_images))
-        right_names = set(map(os.path.basename, right_images))
+        left = glob.glob(left_glob)
+        right = glob.glob(right_glob)
 
-        missing = left_names.symmetric_difference(right_names)
+        ensemble = glob.glob(ensemble_glob)
+
+        left_names = set(map(self.name, left))
+        right_names = set(map(self.name, right))
+        ensemble_names = set(map(self.name, ensemble))
+
+        stereo_missing = left_names.symmetric_difference(right_names)
+        ensemble_missing = left_names.symmetric_difference(ensemble_names)
+
+        missing = set.union(stereo_missing, ensemble_missing)
 
         if len(missing) > 0:
             print(f'Missing {len(missing):,} images from the dataset.')
-            left_images = [i for i in left_images if i not in missing]
-            right_images = [i for i in right_images if i not in missing]
-            print(f'Dataset reduced to {len(left_images):,} images.')
+            left = [i for i in left if self.name(i) not in missing]
+            right = [i for i in right if self.name(i) not in missing]
+            ensemble = [i for i in ensemble if self.name(i) not in missing]
+            print(f'Dataset reduced to {len(left):,} images.')
 
-        self.lefts = sorted(left_images[:limit])
-        self.rights = sorted(right_images[:limit])
+        self.lefts = sorted(left[:limit])
+        self.rights = sorted(right[:limit])
+
+        self.ensembles = sorted(ensemble[:limit])
 
         self.transform = transform
+
+    @staticmethod
+    def name(path: str) -> str:
+        return os.path.splitext(basename(path))[0]
 
     def __getitem__(self, idx: int) -> Dict[str, Tensor]:
         """Retrieve a single sample from the dataset.
@@ -81,10 +102,17 @@ class DaVinciDataset(Dataset):
         left_path = self.lefts[idx]
         right_path = self.rights[idx]
 
+        ensemble_path = self.ensembles[idx]
+
         left = Image.open(left_path).convert('RGB')
         right = Image.open(right_path).convert('RGB')
 
-        image_pair = {'left': left, 'right': right}
+        ensemble_prediction = tifffile.imread(ensemble_path)
+        
+        image_pair = {
+            'left': left, 'right': right,
+            'ensemble': torch.from_numpy(ensemble_prediction)
+        }
 
         if self.transform is not None:
             image_pair = self.transform(image_pair)

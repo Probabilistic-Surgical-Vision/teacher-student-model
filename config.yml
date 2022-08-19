@@ -101,7 +101,7 @@ discriminator:
   linear_in_features: 32768
 
 loss:
-  wssim_weight: 1.0
+  disparity_weight: 1.0
   consistency_weight: 1.0
   smoothness_weight: 1.0
   adversarial_weight: 0.85
@@ -111,8 +111,8 @@ loss:
   perceptual_start: 5
   adversarial_loss_type: mse
   error_loss_config:
-    loss_type: l1
+    loss_type: bayesian
     smoothness_weight: 0
     consistency_weight: 0.5
     pooling: false
-    include_aleatoric: false
+    include_aleatoric: true

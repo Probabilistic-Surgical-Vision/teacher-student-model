@@ -16,7 +16,7 @@ from torchvision import transforms
 import yaml
 import json
 
-from loaders import DaVinciDataset, SCAREDDataset
+from loaders import DaVinciEnsembleDataset, SCAREDEnsembleDataset
 from model import RandomlyConnectedModel, RandomDiscriminator
 
 import train
@@ -31,6 +31,10 @@ parser.add_argument('config', type=str,
 parser.add_argument('dataset', choices=['da-vinci', 'scared'],
                     help='The dataset to use for training (must be'
                     'either "da-vinci" or "scared").')
+parser.add_argument('--dataset-path', default=None, type=str,
+                    help='The path to the root directory of the dataset.')
+parser.add_argument('--ensemble-path', default=None, type=str,
+                    help='The path to the dataset of ensemble predictions.')
 parser.add_argument('--epochs', '-e', default=200, type=int,
                     help='The number of epochs to train the model for.')
 parser.add_argument('--learning-rate', '-lr', default=1e-4, type=float,
@@ -103,9 +107,13 @@ def main(gpu_index: int, args: argparse.Namespace) -> None:
 
             print(f'\t- {p.name()} ({p.pid}) created {created}.')
 
-    dataset_path = os.path.join(args.home, 'datasets', args.dataset)
-    dataset_class = DaVinciDataset if args.dataset == 'da-vinci' \
-        else SCAREDDataset
+    dataset_path = args.dataset_path if args.dataset_path is not None \
+        else os.path.join(args.home, 'datasets', args.dataset)
+    ensemble_path = args.ensemble_path if args.ensemble_path is not None \
+        else os.path.join(args.home, 'datasets', args.dataset, 'ensemble')
+
+    dataset_class = DaVinciEnsembleDataset if args.dataset == 'da-vinci' \
+        else SCAREDEnsembleDataset
 
     with open(args.config) as f:
         config = yaml.load(f, Loader=yaml.Loader)
@@ -125,9 +133,9 @@ def main(gpu_index: int, args: argparse.Namespace) -> None:
     train_transform = no_augment_transform \
         if args.no_augment else augment_transform
 
-    train_dataset = dataset_class(dataset_path, 'train',
+    train_dataset = dataset_class(dataset_path, ensemble_path, 'train',
                                   train_transform, args.training_size)
-    val_dataset = dataset_class(dataset_path, 'test',
+    val_dataset = dataset_class(dataset_path, ensemble_path, 'train',
                                 no_augment_transform, args.validation_size)
 
     if rank == 0:

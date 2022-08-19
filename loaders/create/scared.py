@@ -16,7 +16,7 @@ from torch.utils.data import Dataset, DataLoader
 
 import tqdm
 
-from ...scared import SCAREDDataset
+from .loaders.scared import SCAREDFilePathDataset
 
 Device = Union[str, torch.device]
 
@@ -39,11 +39,9 @@ class CreateSCAREDEnsembleDataset(Dataset):
 
             self.model_states.append(model_state)
     
-        self.dataset = SCAREDDataset(scared_path, split, transform)
+        self.dataset = SCAREDFilePathDataset(scared_path, split, transform)
         self.dataloader = DataLoader(self.dataset, batch_size,
                                      shuffle=False, num_workers=workers)
-        
-        print(f'Size of SCARED Dataset: {len(self.dataset):,}')
     
     def prepare_state_dict(self, model_path: str) -> OrderedDict:
         state_dict = torch.load(model_path)
@@ -79,16 +77,14 @@ class CreateSCAREDEnsembleDataset(Dataset):
         model = blank_model.to(device)
         model.eval()
 
-        tepoch = tqdm.tqdm(self.dataloader, unit='batch')
-
-        for i, image_pair in enumerate(tepoch):
+        for image_pair in tqdm.tqdm(self.dataloader, unit='batch'):
             left = image_pair['left'].to(device)
+            
+            filenames = image_pair['filename']
             estimations = self.ensemble_predict(left, model)
 
-            for j, estimation in enumerate(estimations):
-                image_id = (self.batch_size * i) + j + 1
-                filename = f'ensemble_{image_id:04}.tiff'
-                filepath = os.path.join(save_to, filename)
+            for estimation, filename in zip(estimations, filenames):
+                filepath = os.path.join(save_to, f'{filename}.tiff')
                 
                 estimation = estimation.cpu().numpy() \
                     .astype(np.float32)

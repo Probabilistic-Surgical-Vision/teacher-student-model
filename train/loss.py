@@ -447,7 +447,7 @@ class TukraEnsembleLoss(nn.Module):
             https://tinyurl.com/23jb9tnz
 
         Args:
-            wssim_weight (float, optional): The weight of the reprojection
+            disparity_weight (float, optional): The weight of the reprojection
                 loss. Defaults to 1.0.
             consistency_weight (float, optional): The weight of the consistency
                 loss. Defaults to 1.0.

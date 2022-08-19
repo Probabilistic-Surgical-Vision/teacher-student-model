@@ -22,16 +22,18 @@ class ResizeImage:
     """
     def __init__(self, size: ImageSize = (256, 512)) -> None:
         self.transform = transforms.Resize(size)
+        self.size = size
 
     def __call__(self, image_pair: ImageDict) -> ImageDict:
         image_pair['left'] = self.transform(image_pair['left'])
         image_pair['right'] = self.transform(image_pair['right'])
 
         if 'ensemble' in image_pair:
-            ensemble = F.interpolate(image_pair['ensemble'], self.size,
-                                     mode='bilinear', align_corners=True)
+            ensemble = image_pair['ensemble'].unsqueeze(0)
+            ensemble = F.interpolate(ensemble, self.size, mode='bilinear',
+                                     align_corners=True)
 
-            image_pair['ensemble'] = ensemble
+            image_pair['ensemble'] = ensemble.squeeze(0)
 
         return image_pair
 
@@ -65,7 +67,7 @@ class RandomFlip:
             image_pair['right'] = self.transform(image_pair['right'])
 
             if 'ensemble' in image_pair:
-                image_pair['ensemble'] = image_pair['ensemble'][:, :, ::-1]
+                image_pair['ensemble'] = image_pair['ensemble'].flip(2)
 
         return image_pair
 

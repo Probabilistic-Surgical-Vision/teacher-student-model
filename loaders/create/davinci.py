@@ -1,3 +1,4 @@
+from fileinput import filename
 import os
 import os.path
 import glob
@@ -16,7 +17,7 @@ from torch.utils.data import Dataset, DataLoader
 
 import tqdm
 
-from ...davinci import DaVinciDataset
+from .loaders.davinci import DaVinciFilePathDataset
 
 Device = Union[str, torch.device]
 
@@ -39,7 +40,7 @@ class CreateDaVinciEnsembleDataset(Dataset):
 
             self.model_states.append(model_state)
     
-        self.dataset = DaVinciDataset(davinci_path, split, transform)
+        self.dataset = DaVinciFilePathDataset(davinci_path, split, transform)
         self.dataloader = DataLoader(self.dataset, batch_size,
                                      shuffle=False, num_workers=workers)
         
@@ -79,16 +80,14 @@ class CreateDaVinciEnsembleDataset(Dataset):
         model = blank_model.to(device)
         model.eval()
 
-        tepoch = tqdm.tqdm(self.dataloader, unit='batch')
-
-        for i, image_pair in enumerate(tepoch):
+        for image_pair in tqdm.tqdm(self.dataloader, unit='batch'):
             left = image_pair['left'].to(device)
+            
+            filenames = image_pair['filename']
             estimations = self.ensemble_predict(left, model)
 
-            for j, estimation in enumerate(estimations):
-                image_id = (self.batch_size * i) + j + 1
-                filename = f'ensemble_{image_id:04}.tiff'
-                filepath = os.path.join(save_to, filename)
+            for estimation, filename in zip(estimations, filenames):
+                filepath = os.path.join(save_to, f'{filename}.tiff')
                 
                 estimation = estimation.cpu().numpy() \
                     .astype(np.float32)

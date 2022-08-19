@@ -33,8 +33,6 @@ def save_comparisons(image: Tensor, prediction: Tensor,
         device (Device, optional): The torch device to use. Defaults to 'cpu'.
     """
     disparity, uncertainty = torch.split(prediction, [2, 2], dim=0)
-    left_error, right_error = torch.split(error, [3, 3], dim=0)
-    error = torch.cat((left_error.mean(0, True), right_error.mean(0, True)))
 
     prediction_image = u.get_comparison(image, disparity, uncertainty,
                                         add_scaled=False, device=device)
@@ -156,7 +154,9 @@ def evaluate_model(model: Module, loader: DataLoader,
 
         if save_evaluation_to is not None and i == 0:
             error_map = loss_function.error_maps[0][0]
-            truth_map = truth_pyramid[0][0][:, :2]
+            error_map = (error_map - error_map.min()) / (error_map.max() - error_map.min())
+            truth_map = truth_pyramid[0][0, :2]
+            truth_map = (truth_map - truth_map.min()) / (truth_map.max() - truth_map.min())
 
             save_comparisons(image_pyramid[0][0], disparities[0][0],
                              truth_map, error_map, save_evaluation_to,

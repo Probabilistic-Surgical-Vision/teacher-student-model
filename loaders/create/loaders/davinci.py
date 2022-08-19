@@ -1,8 +1,7 @@
-import re
 import glob
 import os.path
 
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from PIL import Image, ImageFile
 
 from torch import Tensor
@@ -11,8 +10,8 @@ from torch.utils.data import Dataset
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
-class CityScapesDataset(Dataset):
-    """Dataset class for loading CityScapes 8-bit images.
+class DaVinciFilePathDataset(Dataset):
+    """Dataset class for loading the Hamlyn da Vinci images.
 
     Given the root of the dataset path, this class will find all left and
     right `.png` images and collect each pair as a dictionary of Tensors.
@@ -26,39 +25,37 @@ class CityScapesDataset(Dataset):
 
     Args:
         root (str): Path to the root of the dataset directory.
-        split (str): The folder in the dataset to use. Must be "train", "val"
-            or "test".
+        split (str): The folder in the dataset to use. Must be "train" or
+            "test".
         transform (Optional[object], optional): The transforms to apply to
             each image pair while loading. Defaults to None.
         limit (Optional[int], optional): The maximum number of images to load.
             Loads all images if None. Defaults to None.
     """
-    LEFT_PATH = 'leftImg8bit'
-    RIGHT_PATH = 'rightImg8bit'
+    LEFT_PATH = 'image_0'
+    RIGHT_PATH = 'image_1'
     EXTENSION = 'png'
-
-    FILENAME_REGEX = re.compile(r'([a-z]+_\d+_\d+)_(\w+)\.(\w+)')
 
     def __init__(self, root: str, split: str,
                  transform: Optional[object] = None,
                  limit: Optional[int] = None) -> None:
 
-        if split not in ('train', 'val', 'test'):
-            raise ValueError('Split must be either "train", "val" or "test".')
+        if split not in ('train', 'test'):
+            raise ValueError('Split must be either "train" or "test".')
 
-        left_glob = os.path.join(root, self.LEFT_PATH, split,
-                                 '**', f'*.{self.EXTENSION}')
+        left_glob = os.path.join(root, split, self.LEFT_PATH,
+                                 f'*.{self.EXTENSION}')
 
-        right_glob = os.path.join(root, self.RIGHT_PATH, split,
-                                  '**', f'*.{self.EXTENSION}')
+        right_glob = os.path.join(root, split, self.RIGHT_PATH,
+                                  f'*.{self.EXTENSION}')
 
         left_images = glob.glob(left_glob)
         right_images = glob.glob(right_glob)
 
-        left_ids = set(self.image_ids(left_images))
-        right_ids = set(self.image_ids(right_images))
+        left_names = set(map(os.path.basename, left_images))
+        right_names = set(map(os.path.basename, right_images))
 
-        missing = left_ids.symmetric_difference(right_ids)
+        missing = left_names.symmetric_difference(right_names)
 
         if len(missing) > 0:
             print(f'Missing {len(missing):,} images from the dataset.')
@@ -70,21 +67,6 @@ class CityScapesDataset(Dataset):
         self.rights = sorted(right_images[:limit])
 
         self.transform = transform
-
-    def image_ids(self, image_paths: List[str]) -> List[str]:
-        """Retrieve image ids given all their basenames.
-
-        If a match cannot be made, the image basename is ignored.
-
-        Args:
-            image_paths (List[str]): The list of image basenames.
-        Returns:
-            List[str]: A list of image IDs in the order they were passed.
-        """
-        basenames = map(os.path.basename, image_paths)
-        matches = map(self.FILENAME_REGEX.match, basenames)
-
-        return [m.group(1) for m in matches if m is not None]
 
     def __getitem__(self, idx: int) -> Dict[str, Tensor]:
         """Retrieve a single sample from the dataset.
@@ -99,10 +81,13 @@ class CityScapesDataset(Dataset):
         left_path = self.lefts[idx]
         right_path = self.rights[idx]
 
+        basename = os.path.basename(left_path)
+        filename = os.path.splitext(basename)
+
         left = Image.open(left_path).convert('RGB')
         right = Image.open(right_path).convert('RGB')
 
-        image_pair = {'left': left, 'right': right}
+        image_pair = {'left': left, 'right': right, 'filename': filename}
 
         if self.transform is not None:
             image_pair = self.transform(image_pair)

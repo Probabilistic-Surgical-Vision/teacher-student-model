@@ -8,7 +8,7 @@ from torchvision import transforms
 import yaml
 
 from model import RandomlyConnectedModel
-from loaders.ensemble import create
+from loaders import create
 
 import train
 
