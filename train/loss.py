@@ -11,137 +11,6 @@ from .utils import ImagePyramid
 from . import utils as u
 
 
-class WeightedSSIMLoss(nn.Module):
-    """Calculate the SSIM/L1 loss between two images.
-
-    Args:
-        alpha (float, optional): The weight of the SSIM Loss in the overall
-            metric (note that L1 weight is equal to 1 - alpha).
-            Defaults to 0.85.
-        k1 (float, optional): The first SSIM factor. Defaults to 0.01.
-        k2 (float, optional): The second SSIM factor. Defaults to 0.03.
-    """
-    def __init__(self, alpha: float = 0.85, k1: float = 0.01,
-                 k2: float = 0.03) -> None:
-
-        super().__init__()
-
-        self.alpha = alpha
-        self.k1 = k1 ** 2
-        self.k2 = k2 ** 2
-
-        self.pool = nn.AvgPool2d(kernel_size=3, stride=1)
-
-        self.__previous_image_error = None
-
-    @property
-    def previous_image_error(self) -> Tensor:
-        """A temporary variable for the last image error calculated."""
-        return self.__previous_image_error
-
-    def ssim(self, x: Tensor, y: Tensor) -> Tensor:
-        """Calculate the per-pixel SSIM between two images.
-
-        Note:
-            Both images are average-pooled and therefore smaller.
-
-        Args:
-            x (Tensor): The first image to compare.
-            y (Tensor): The second image to compare.
-
-        Returns:
-            Tensor: The SSIM image (reduced in size by pooling).
-        """
-        luminance_x = self.pool(x)
-        luminance_y = self.pool(y)
-
-        luminance_xx = luminance_x * luminance_x
-        luminance_yy = luminance_y * luminance_y
-        luminance_xy = luminance_x * luminance_y
-
-        contrast_x = self.pool(x * x) - luminance_xx
-        contrast_y = self.pool(y * y) - luminance_yy
-
-        contrast_xy = self.pool(x * y) - luminance_xy
-
-        numerator = ((2 * luminance_xy) + self.k1) \
-            * ((2 * contrast_xy) + self.k2)
-
-        denominator = (luminance_xx + luminance_yy + self.k1) \
-            * (contrast_x + contrast_y + self.k2)
-
-        return numerator / denominator
-
-    def dssim(self, x: Tensor, y: Tensor) -> Tensor:
-        """Calculate the Structural Dissimilarity (DSSIM) between two images.
-
-        Note:
-            Both images are average-pooled and therefore smaller.
-
-        Args:
-            x (Tensor): The first image to compare.
-            y (Tensor): The second image to compare.
-
-        Returns:
-            Tensor: The per-pixel DSSIM image (reduced in size by pooling).
-        """
-        dissimilarity = (1 - self.ssim(x, y)) / 2
-        return torch.clamp(dissimilarity, 0, 1)
-
-    def l1_error(self, x: Tensor, y: Tensor) -> Tensor:
-        """Calculate the per-pixel L1 Loss between two tensors."""
-        return (x - y).abs()
-
-    def image_error(self, images: Tensor, recon: Tensor) -> Tensor:
-        """Calculate the per-pixel weighted SSIM error.
-
-        This is given by:
-            loss = ((alpha / 2) * DSSIM) + ((1 - alpha) * L1)
-
-        Args:
-            x (Tensor): The first image to compare.
-            y (Tensor): The second image to compare.
-
-        Returns:
-            Tensor: A stereo image of the WSSIM error.
-        """
-        _, _, height, width = images.size()
-
-        left_l1_error = self.l1_error(images[:, 0:3], recon[:, 0:3])
-        right_l1_error = self.l1_error(images[:, 3:6], recon[:, 3:6])
-
-        left_ssim_error = self.dssim(images[:, 0:3], recon[:, 0:3])
-        right_ssim_error = self.dssim(images[:, 3:6], recon[:, 3:6])
-
-        l1_error = torch.cat((left_l1_error, right_l1_error), dim=1)
-        ssim_error = torch.cat((left_ssim_error, right_ssim_error), dim=1)
-
-        ssim_error = F.interpolate(ssim_error, size=(height, width),
-                                   mode='bilinear', align_corners=True)
-
-        return ((self.alpha / 2) * ssim_error) + ((1 - self.alpha) * l1_error)
-
-    def forward(self, images: Tensor, recon: Tensor) -> Tensor:
-        """Calculate the weighted SSIM loss.
-
-        This is given by:
-            loss = ((alpha / 2) * DSSIM) + ((1 - alpha) * L1)
-
-        Args:
-            x (Tensor): The first image to compare.
-            y (Tensor): The second image to compare.
-
-        Returns:
-            Tensor: The WSSIM loss as a single float.
-        """
-        error = self.image_error(images, recon)
-        left_error, right_error = torch.split(error, [3, 3], dim=1)
-
-        self.__previous_image_error = error
-
-        return torch.mean(left_error + right_error)
-
-
 class ConsistencyLoss(nn.Module):
     """Calculate the consistency loss between two disparity images.
 
@@ -297,7 +166,7 @@ class GeneratorLoss(nn.Module):
     The Generator needs to learn to convince the Discriminator that its
     reconstructed images are real.
 
-    Therefore, the ground truth values must all be one. The model is then
+    Therefore, the ground ensemble values must all be one. The model is then
     trained on either binary cross-entropy or mean-squared error.
     """
     def __init__(self, loss: str = 'mse') -> None:
@@ -343,7 +212,6 @@ class DisparityErrorLoss(nn.Module):
     def __init__(self, loss_type: str = 'l1',
                  smoothness_weight: float = 1.0,
                  consistency_weight: float = 1.0,
-                 include_aleatoric: bool = False,
                  pooling: bool = False) -> None:
 
         super().__init__()
@@ -353,7 +221,6 @@ class DisparityErrorLoss(nn.Module):
                              'or "log_bayesian".')
 
         self.loss_type = loss_type
-        self.include_aleatoric = include_aleatoric
 
         if loss_type == 'l1':
             self.loss_function = self.l1
@@ -396,24 +263,24 @@ class DisparityErrorLoss(nn.Module):
         """Calculate the loss using using the L1 error."""
         return u.l1_loss(predicted, error)
 
-    def forward(self, predicted: Tensor, truth: Tensor) -> Tensor:
-        pred_disp, pred_error = torch.split(predicted, [2, 2], dim=1)
-        true_disp, true_error = torch.split(truth, [2, 2], dim=1)
+    def forward(self, predicted: Tensor, image: Tensor, ensemble: Tensor) -> Tensor:
+        predicted_disp, predicted_std = torch.split(predicted, [2, 2], dim=1)
+        ensemble_disp, ensemble_var = torch.split(ensemble, [2, 2], dim=1)
 
-        if self.include_aleatoric:
-            aleatoric = (pred_disp.detach().clone() - true_disp).abs()
-            true_error = torch.sqrt((true_error ** 2) + (aleatoric ** 2))
+        error = (predicted_disp.detach().clone() - ensemble_disp).abs()
+        uncertainty = torch.sqrt(ensemble_var + (predicted_std ** 2))
 
-        self.__error_map = true_error
+        self.__error_map = error
 
-        pred_error = self.pool(pred_error)
-        true_error = self.pool(true_error)
+        image = self.pool(image)
+        error = self.pool(error)
+        uncertainty = self.pool(uncertainty)
 
-        loss = self.loss_function(pred_error, true_error)
+        loss = self.loss_function(uncertainty, error)
 
-        smoothness_loss = self.smoothness(pred_error, true_error) \
+        smoothness_loss = self.smoothness(uncertainty, image) \
             if self.smoothness_weight > 0 else 0
-        consistency_loss = self.consistency(pred_error, pred_disp) \
+        consistency_loss = self.consistency(uncertainty, predicted_disp) \
             if self.consistency_weight > 0 else 0
 
         return loss + (smoothness_loss * self.smoothness_weight) \
@@ -427,7 +294,6 @@ class TukraEnsembleLoss(nn.Module):
                  adversarial_weight: float = 0.85,
                  predictive_error_weight: float = 1.0,
                  perceptual_weight: float = 0.05,
-                 wssim_alpha: float = 0.85,
                  perceptual_start: int = 5,
                  adversarial_loss_type: str = 'mse',
                  error_loss_config: Optional[dict] = None) -> None:
@@ -472,8 +338,7 @@ class TukraEnsembleLoss(nn.Module):
         """
         super().__init__()
 
-        self.wssim = WeightedSSIMLoss(wssim_alpha)
-
+        self.disparity = nn.L1Loss()
         self.consistency = ConsistencyLoss()
         self.smoothness = SmoothnessLoss()
 
@@ -495,15 +360,15 @@ class TukraEnsembleLoss(nn.Module):
 
         self.predictive_error_weight = predictive_error_weight
 
-        self.__error_maps = []
+        self.__error_map = None
 
     @property
-    def error_maps(self) -> List[Tensor]:
-        return self.__error_maps
+    def error_map(self) -> List[Tensor]:
+        return self.__error_map
 
     def forward(self, image_pyramid: ImagePyramid,
                 predictions: ImagePyramid,
-                truth_pyramid: ImagePyramid, epoch: Optional[int] = None,
+                ensemble_pyramid: ImagePyramid, epoch: Optional[int] = None,
                 discriminator: Optional[Module] = None) -> Tensor:
         """Calculate the total loss of the model.
 
@@ -520,7 +385,7 @@ class TukraEnsembleLoss(nn.Module):
         Returns:
             Tensor: The total loss as a single float.
         """
-        self.__error_maps = []
+        self.__error_map = None
 
         disparity_loss = 0
         consistency_loss = 0
@@ -530,26 +395,27 @@ class TukraEnsembleLoss(nn.Module):
 
         error_loss = 0
 
-        scales = zip(image_pyramid, predictions, truth_pyramid)
+        scales = zip(image_pyramid, predictions, ensemble_pyramid)
 
-        for i, (images, prediction, truth) in enumerate(scales):
-            pred_disp, true_disp = prediction[:, :2], truth[:, :2]
+        for i, (images, prediction, ensemble) in enumerate(scales):
+            pred_disp, ensemble_disp = prediction[:, :2], ensemble[:, :2]
 
-            disparity_loss += F.l1_loss(pred_disp, true_disp)
+            disparity_loss += self.disparity(pred_disp, ensemble_disp)
             consistency_loss += self.consistency(pred_disp)
             smoothness_loss += self.smoothness(pred_disp, images) / (2 ** i)
 
-            error_loss += self.predictive_error(prediction, truth)
-            error_map = self.predictive_error.error_map
+            error_loss += self.predictive_error(prediction, images, ensemble)
 
-            self.error_maps.append(error_map)
+            if i == 0:
+                self.__error_map = self.predictive_error.error_map
 
         if discriminator is not None:
-            adversarial_loss += self.adversarial(truth_pyramid, discriminator)
+            adversarial_loss += self.adversarial(ensemble_pyramid,
+                                                 discriminator)
 
             if epoch is not None and epoch >= self.perceptual_start:
                 perceptual_loss += self.perceptual(image_pyramid,
-                                                   truth_pyramid,
+                                                   ensemble_pyramid,
                                                    discriminator)
 
         total_disparity_loss = disparity_loss * self.disparity_weight \

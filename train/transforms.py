@@ -1,3 +1,4 @@
+import math
 from typing import Dict, Tuple
 
 from numpy import random
@@ -140,5 +141,22 @@ class RandomAugment:
 
             image_pair['left'] = left
             image_pair['right'] = right
+
+        return image_pair
+
+
+class NormaliseVariance:
+
+    def __init__(self, mean: float, variance: float) -> None:
+        std = math.sqrt(variance)
+        self.transform = transforms.Normalize(mean, std)
+    
+    def __call__(self, image_pair: ImageDict) -> ImageDict:
+
+        ensemble = image_pair['ensemble']
+        ensemble[2:] = self.transform(ensemble[2:])
+
+        # Fit into the range [0, 1]
+        image_pair['ensemble'] = (ensemble + 1) / 2
 
         return image_pair

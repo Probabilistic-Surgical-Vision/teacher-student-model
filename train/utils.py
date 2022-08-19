@@ -171,8 +171,8 @@ def adjust_disparity_scale(epoch: int, m: float = 0.02, c: float = 0.0,
     return np.clip(scale, min_scale, max_scale)
 
 
-def to_heatmap(x: Tensor, device: Device = 'cpu', inverse: bool = False,
-               colour_map: str = 'inferno') -> Tensor:
+def to_rgb(x: Tensor, device: Device = 'cpu', inverse: bool = False,
+               colour_map: str = 'inferno', scale: bool = True) -> Tensor:
     """Convert a single-channel image to an RGB heatmap.
 
     Args:
@@ -187,6 +187,13 @@ def to_heatmap(x: Tensor, device: Device = 'cpu', inverse: bool = False,
     Returns:
         Tensor: The single-channel image as an RGB image.
     """
+    if x.size(0) == 3:
+        return x.to(device)
+
+    if scale:
+        x_min, x_max = x.min(), x.max()
+        x = (x - x_min) / (x_max - x_min)
+
     image = x.squeeze(0).cpu().numpy()
     image = 1 - image if inverse else image
 
@@ -270,8 +277,8 @@ def run_discriminator(image_pyramid: ImagePyramid,
     return disc_loss_function(predictions, labels) / 2
 
 
-def get_comparison(image: Tensor, prediction: Tensor, extra: Optional[Tensor],
-                   add_scaled: bool = False, device: Device = 'cpu') -> Tensor:
+def get_comparison(image: Tensor, comparison: Tensor, extra: Optional[Tensor],
+                   scale: bool = False, device: Device = 'cpu') -> Tensor:
     """Create a comparison image of the image, disparity and reconstruction.
 
     Args:
@@ -280,7 +287,7 @@ def get_comparison(image: Tensor, prediction: Tensor, extra: Optional[Tensor],
         extra (Optional[Tensor]): An extra image to append to the comparison,
             such as the reconstruction. Must be either 2 or 6 channels (i.e.
             stereo single-channel or stereo three-channel).
-        add_scaled (bool, optional): Include a scaled version of the
+        scale (bool, optional): Include a scale version of the
             disparity. Defaults to False.
         device (Device, optional): The torch device to map the output to.
             Defaults to 'cpu'.
@@ -289,33 +296,20 @@ def get_comparison(image: Tensor, prediction: Tensor, extra: Optional[Tensor],
         Tensor: The comparison image.
     """
     left_image, right_image = torch.split(image, [3, 3], dim=0)
-    left_pred, right_pred = torch.split(prediction, [1, 1], dim=0)
+    left_comp, right_comp = torch.split(comparison, [1, 1], dim=0)
 
-    min_pred, max_pred = prediction.min(), prediction.max()
-    scaled_left_pred = (left_pred - min_pred) / (max_pred - min_pred)
-    scaled_right_pred = (right_pred - min_pred) / (max_pred - min_pred)
+    left_comp = to_rgb(left_comp, device, scale=scale)
+    right_comp = to_rgb(right_comp, device, scale=scale)
 
-    left_pred = to_heatmap(left_pred, device)
-    right_pred = to_heatmap(right_pred, device)
+    images = torch.stack((left_image, right_image, left_comp, right_comp))
 
     if extra is not None:
         extra_split = [3, 3] if extra.size(0) == 6 else [1, 1]
         left_extra, right_extra = torch.split(extra, extra_split, dim=0)
 
-        if extra.size(0) == 2:
-            left_extra = to_heatmap(left_extra, device)
-            right_extra = to_heatmap(right_extra, device)
+        left_extra = to_rgb(left_extra, device, scale=scale)
+        right_extra = to_rgb(right_extra, device, scale=scale)
 
-    images = torch.stack((left_image, right_image, left_pred, right_pred))
-
-    if add_scaled:
-        scaled_left_pred = to_heatmap(scaled_left_pred, device)
-        scaled_right_pred = to_heatmap(scaled_right_pred, device)
-
-        images = torch.cat((images, scaled_left_pred.unsqueeze(0),
-                           scaled_right_pred.unsqueeze(0)))
-
-    if extra is not None:
         images = torch.cat((images, left_extra.unsqueeze(0),
                            right_extra.unsqueeze(0)))
 

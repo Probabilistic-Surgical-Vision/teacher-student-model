@@ -15,7 +15,7 @@ from .utils import Device
 
 
 def save_comparisons(image: Tensor, prediction: Tensor,
-                     recon: Tensor, error: Tensor, directory: str,
+                     ensemble: Tensor, error: Tensor, directory: str,
                      epoch_number: Optional[int] = None,
                      is_final: bool = True, device: Device = 'cpu') -> None:
     """Save a .png comparing the original image, prediction and error images.
@@ -23,7 +23,7 @@ def save_comparisons(image: Tensor, prediction: Tensor,
     Args:
         image (Tensor): The original image pair.
         prediction (Tensor): The disparity image pair.
-        recon (Tensor): The reconstructed image pair.
+        ensemble (Tensor): The ensemblestructed image pair.
         error (Tensor): The true error image pair.
         directory (str): The directory to save the result to.
         epoch_number (Optional[int], optional): The epoch number for creating
@@ -35,11 +35,11 @@ def save_comparisons(image: Tensor, prediction: Tensor,
     disparity, uncertainty = torch.split(prediction, [2, 2], dim=0)
 
     prediction_image = u.get_comparison(image, disparity, uncertainty,
-                                        add_scaled=False, device=device)
-    disparity_image = u.get_comparison(image, disparity, recon,
-                                       add_scaled=True, device=device)
-    uncertainty_image = u.get_comparison(image, uncertainty, error,
-                                         add_scaled=True, device=device)
+                                        scale=False, device=device)
+    disparity_image = u.get_comparison(image, disparity, ensemble,
+                                       scale=True, device=device)
+    error_image = u.get_comparison(image, uncertainty, error,
+                                   scale=True, device=device)
 
     dirname = 'final' if is_final else f'epoch_{epoch_number:03}'
     epoch_directory = os.path.join(directory, dirname)
@@ -54,7 +54,7 @@ def save_comparisons(image: Tensor, prediction: Tensor,
 
     save_image(prediction_image, prediction_filename)
     save_image(disparity_image, disparity_filename)
-    save_image(uncertainty_image, uncertainty_filename)
+    save_image(error_image, uncertainty_filename)
 
 
 @torch.no_grad()
@@ -117,20 +117,20 @@ def evaluate_model(model: Module, loader: DataLoader,
     for i, image_pair in enumerate(tepoch):
         left = image_pair['left'].to(device)
         right = image_pair['right'].to(device)
-        truth = image_pair['ensemble'].to(device)
+        ensemble = image_pair['ensemble'].to(device)
 
         images = torch.cat([left, right], dim=1)
 
         image_pyramid = u.scale_pyramid(images, scales)
-        truth_pyramid = u.scale_pyramid(truth, scales)
+        ensemble_pyramid = u.scale_pyramid(ensemble, scales)
 
         disparities = model(left, scale)
 
         disp_loss, error_loss = loss_function(image_pyramid, disparities,
-                                              truth_pyramid, i, disc)
+                                              ensemble_pyramid, i, disc)
 
         if disc is not None:
-            disc_loss = u.run_discriminator(image_pyramid, truth_pyramid,
+            disc_loss = u.run_discriminator(image_pyramid, ensemble_pyramid,
                                             disc, disc_loss_function,
                                             batch_size)
 
@@ -153,14 +153,16 @@ def evaluate_model(model: Module, loader: DataLoader,
                            scale=scale)
 
         if save_evaluation_to is not None and i == 0:
-            error_map = loss_function.error_maps[0][0]
-            error_map = (error_map - error_map.min()) / (error_map.max() - error_map.min())
-            truth_map = truth_pyramid[0][0, :2]
-            truth_map = (truth_map - truth_map.min()) / (truth_map.max() - truth_map.min())
+            original_image = image_pyramid[0][0]
+            disparity_image = disparities[0][0]
+            ensemble_image = ensemble_pyramid[0][0, :2]
 
-            save_comparisons(image_pyramid[0][0], disparities[0][0],
-                             truth_map, error_map, save_evaluation_to,
-                             epoch_number, is_final, device)
+            error_image = loss_function.error_map[0]
+
+            save_comparisons(original_image, disparity_image,
+                             ensemble_image, error_image,
+                             save_evaluation_to, epoch_number, 
+                             is_final, device)
 
     if no_pbar and rank == 0:
         disc_loss_string = f'{disc_loss_per_image:.2e}' \
