@@ -5,4 +5,5 @@ find . -not \( \
     -or -path "*__pycache__*" \
     -or -path "./venv*" \
     -or -path "./trained*" \
-    -or -path "./results*" \) | zip -@ model-package
+    -or -path "./results*" \
+    -or -path "./ensemble-dataset*" \) | zip -@ model-package

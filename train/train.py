@@ -122,13 +122,15 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
         images = torch.cat([left, right], dim=1)
 
         image_pyramid = u.scale_pyramid(images, scales)
-        truth_pyramid = u.scale_pyramid(truth, scales)
+        ensemble_pyramid = u.scale_pyramid(truth, scales)
 
         model_optimiser.zero_grad()
         disparities = model(left, scale)
 
+        recon_pyramid = u.reconstruct_pyramid(disparities, image_pyramid)
         disp_loss, error_loss = loss_function(image_pyramid, disparities,
-                                              truth_pyramid, i, disc_clone)
+                                              ensemble_pyramid, recon_pyramid,
+                                              i, disc_clone)
 
         model_loss = disp_loss + error_loss
 
@@ -144,7 +146,7 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
 
         if disc is not None:
             disc_optimiser.zero_grad()
-            disc_loss = u.run_discriminator(image_pyramid, truth_pyramid,
+            disc_loss = u.run_discriminator(image_pyramid, recon_pyramid,
                                             disc, disc_loss_function,
                                             batch_size)
 

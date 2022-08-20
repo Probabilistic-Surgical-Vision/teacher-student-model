@@ -171,8 +171,8 @@ def adjust_disparity_scale(epoch: int, m: float = 0.02, c: float = 0.0,
     return np.clip(scale, min_scale, max_scale)
 
 
-def to_rgb(x: Tensor, device: Device = 'cpu', inverse: bool = False,
-               colour_map: str = 'inferno', scale: bool = True) -> Tensor:
+def to_rgb(x: Tensor, scale: bool = True, inverse: bool = False,
+               colour_map: str = 'inferno', device: Device = 'cpu') -> Tensor:
     """Convert a single-channel image to an RGB heatmap.
 
     Args:
@@ -277,7 +277,7 @@ def run_discriminator(image_pyramid: ImagePyramid,
     return disc_loss_function(predictions, labels) / 2
 
 
-def get_comparison(image: Tensor, comparison: Tensor, extra: Optional[Tensor],
+def get_comparison(image: Tensor, *comparisons: Tensor,
                    scale: bool = False, device: Device = 'cpu') -> Tensor:
     """Create a comparison image of the image, disparity and reconstruction.
 
@@ -296,22 +296,19 @@ def get_comparison(image: Tensor, comparison: Tensor, extra: Optional[Tensor],
         Tensor: The comparison image.
     """
     left_image, right_image = torch.split(image, [3, 3], dim=0)
-    left_comp, right_comp = torch.split(comparison, [1, 1], dim=0)
 
-    left_comp = to_rgb(left_comp, device, scale=scale)
-    right_comp = to_rgb(right_comp, device, scale=scale)
+    images = [left_image, right_image]
 
-    images = torch.stack((left_image, right_image, left_comp, right_comp))
+    for comparison in comparisons:
+        split_size = [3, 3] if comparison.size(0) == 6 else [1, 1]
+        left, right = torch.split(comparison, split_size, dim=0)
 
-    if extra is not None:
-        extra_split = [3, 3] if extra.size(0) == 6 else [1, 1]
-        left_extra, right_extra = torch.split(extra, extra_split, dim=0)
+        left = to_rgb(left, scale, device=device)
+        right = to_rgb(right, scale, device=device)
 
-        left_extra = to_rgb(left_extra, device, scale=scale)
-        right_extra = to_rgb(right_extra, device, scale=scale)
+        images.extend([left, right])
 
-        images = torch.cat((images, left_extra.unsqueeze(0),
-                           right_extra.unsqueeze(0)))
+    images = torch.stack(images)
 
     return make_grid(images, nrow=2)
 
