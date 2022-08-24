@@ -239,9 +239,6 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
     disc_optimiser = Adam(disc.parameters(), learning_rate) \
         if disc is not None else None
 
-    #scheduler = StepLR(model_optimiser, scheduler_step_size,
-    #                   scheduler_decay_rate)
-
     training_losses = []
     validation_metrics = []
 
@@ -257,8 +254,6 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
 
         if rank == 0:
             training_losses.append(loss)
-
-        #scheduler.step()
 
         if evaluate_every is not None and (i+1) % evaluate_every == 0:
             metrics = evaluate_model(model, val_loader, save_evaluation_to,

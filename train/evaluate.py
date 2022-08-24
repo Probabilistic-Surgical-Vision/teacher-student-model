@@ -154,7 +154,7 @@ def evaluate_model(model: Module, loader: DataLoader,
 
         oracle_spars = spars.curve(error, error, device=device)
         pred_spars = spars.curve(error, uncertainty, device=device)
-        random_spars = spars.random_curve(error)
+        random_spars = spars.random_curve(error, device=device)
 
         ause = spars.ause(oracle_spars, pred_spars)
         aurg = spars.aurg(pred_spars, random_spars)
