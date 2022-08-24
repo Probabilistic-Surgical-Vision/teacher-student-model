@@ -135,7 +135,7 @@ def main(gpu_index: int, args: argparse.Namespace) -> None:
 
     train_dataset = dataset_class(dataset_path, ensemble_path, 'train',
                                   train_transform, args.training_size)
-    val_dataset = dataset_class(dataset_path, ensemble_path, 'train',
+    val_dataset = dataset_class(dataset_path, ensemble_path, 'test',
                                 no_augment_transform, args.validation_size)
 
     if rank == 0:
