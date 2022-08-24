@@ -1,7 +1,7 @@
 import os
 import os.path
 from copy import deepcopy
-from typing import Callable, List, Optional, Tuple
+from typing import Optional, Tuple
 
 import torch
 from torch.nn import Module
@@ -13,11 +13,7 @@ import tqdm
 from .evaluate import evaluate_model
 
 from . import utils as u
-from .utils import Device
-
-Loss = List[float]
-LRAdjuster = Callable[[Optimizer, int, float], None]
-ScaleAdjuster = Callable[[int], float]
+from .utils import Device, Loss, LRAdjuster, ScaleAdjuster
 
 
 def save_model(model: Module, save_model_to: str,

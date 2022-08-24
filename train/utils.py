@@ -1,4 +1,4 @@
-from typing import List, OrderedDict, Union
+from typing import Callable, List, Optional, OrderedDict, Union
 
 import matplotlib.pyplot as plt
 
@@ -13,9 +13,11 @@ from torch.optim import Optimizer
 from torchvision.utils import make_grid
 
 # Type hint definitions
-ImagePyramid = List[Tensor]
 Device = Union[torch.device, str]
-
+ImagePyramid = List[Tensor]
+LRAdjuster = Callable[[Optimizer, int, float, bool], None]
+ScaleAdjuster = Callable[[int], float]
+Loss = List[float]
 
 def l1_loss(x: Tensor, y: Tensor) -> Tensor:
     """Calculate the L1 loss between two images."""
@@ -165,7 +167,7 @@ def adjust_disparity(epoch: int, m: float = 0.02, c: float = 0.0,
         float: The disparity scale.
     """
     # Transform epoch to continuous scale using m and c
-    scale = (epoch * m) + c
+    scale = ((epoch + 1) * m) + c
     # Quantise to fit the grid defined by step and offset
     scale = (round((scale + offset) / step) * step) - offset
     # Clip to between min and max bounds
@@ -319,7 +321,8 @@ def prepare_state_dict(state_dict: OrderedDict) -> dict:
     return {k.replace("module.", ""): v for k, v in state_dict.items()}
 
 
-def adjust_learning_rate(optimiser: Optimizer, epoch: int, lr: float) -> None:
+def adjust_learning_rate(optimiser: Optimizer, epoch: int, lr: float,
+                         finetune: bool = False) -> None:
     """Halve and quarter the learning rate at 30 and 40 epochs respectively.
 
     Code adapted from:
@@ -330,12 +333,12 @@ def adjust_learning_rate(optimiser: Optimizer, epoch: int, lr: float) -> None:
         epoch (int): The current epoch number.,
         lr (float): The initial learning rate.
     """
-    if epoch < 30:
-        target_learning_rate = lr
-    elif epoch < 40:
+    if epoch > 40 or finetune:
+        target_learning_rate = lr / 4
+    elif epoch > 30:
         target_learning_rate = lr / 2
     else:
-        target_learning_rate = lr / 4
+        target_learning_rate = lr
 
     for group in optimiser.param_groups:
         group['lr'] = target_learning_rate
