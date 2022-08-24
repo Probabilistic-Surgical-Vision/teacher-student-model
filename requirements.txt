@@ -11,3 +11,4 @@ ipython
 nbconvert
 psutil
 tifffile
+torchmetrics

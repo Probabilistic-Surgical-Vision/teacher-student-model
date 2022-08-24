@@ -2,19 +2,27 @@ import os.path
 from typing import Optional, Tuple
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Module
 from torch.utils.data import DataLoader
 
 from torchvision.utils import save_image
 
+from torchmetrics.functional import \
+    structural_similarity_index_measure as ssim
+
 import tqdm
+
+from .loss import WeightedSSIMLoss
+
+from . import sparsification as spars
 
 from . import utils as u
 from .utils import Device
 
 
-def save_comparisons(image: Tensor, ensemble: Tensor, prediction: Tensor,
+def save_comparisons(image: Tensor, disparity: Tensor, uncertainty: Tensor,
                      recon: Tensor, error: Tensor, directory: str,
                      epoch_number: Optional[int] = None,
                      is_final: bool = True, device: Device = 'cpu') -> None:
@@ -32,18 +40,12 @@ def save_comparisons(image: Tensor, ensemble: Tensor, prediction: Tensor,
             Defaults to True.
         device (Device, optional): The torch device to use. Defaults to 'cpu'.
     """
-    pred_disp, pred_error = torch.split(prediction, [2, 2], dim=0)
-    ensemble_disp, ensemble_error = torch.split(ensemble, [2, 2], dim=0)
-
-    left_error, right_error = torch.split(error, [3, 3], dim=0)
-    error = torch.cat((left_error.mean(0, True), right_error.mean(0, True)))
-
-    prediction_image = u.get_comparison(image, pred_disp, pred_error,
+    prediction_image = u.get_comparison(image, disparity, uncertainty,
                                         scale=False, device=device)
-    disparity_image = u.get_comparison(image, ensemble_disp, pred_disp,
-                                       recon, scale=True, device=device)
-    error_image = u.get_comparison(image, ensemble_error, pred_error,
-                                   error, scale=True, device=device)
+    disparity_image = u.get_comparison(image, disparity, recon,
+                                       scale=True, device=device)
+    uncertainty_image = u.get_comparison(image, uncertainty, error,
+                                         scale=True, device=device)
 
     dirname = 'final' if is_final else f'epoch_{epoch_number:03}'
     epoch_directory = os.path.join(directory, dirname)
@@ -58,19 +60,17 @@ def save_comparisons(image: Tensor, ensemble: Tensor, prediction: Tensor,
 
     save_image(prediction_image, prediction_filename)
     save_image(disparity_image, disparity_filename)
-    save_image(error_image, uncertainty_filename)
+    save_image(uncertainty_image, uncertainty_filename)
 
 
 @torch.no_grad()
 def evaluate_model(model: Module, loader: DataLoader,
-                   loss_function: Module, scale: float = 1.0,
-                   disc: Optional[Module] = None,
-                   disc_loss_function: Optional[Module] = None,
                    save_evaluation_to: Optional[str] = None,
                    epoch_number: Optional[int] = None,
-                   is_final: bool = True,
-                   scales: int = 4, device: Device = 'cpu',
+                   scale: int = 4, is_final: bool = True,
+                   kernel_size: int = 11,
                    no_pbar: bool = False,
+                   device: Device = 'cpu',
                    rank: int = 0) -> Tuple[float, float]:
     """Loop through the validation set and report model losses.
 
@@ -102,13 +102,15 @@ def evaluate_model(model: Module, loader: DataLoader,
         float: The average uncertainty loss per image.
         float: The average discriminator loss per image.
     """
-    running_disp_loss = 0
-    running_error_loss = 0
-    running_disc_loss = 0
+    running_left_ssim = 0
+    running_right_ssim = 0
+    running_ause = 0
+    running_aurg = 0
 
-    disp_loss_per_image = None
-    error_loss_per_image = None
-    disc_loss_per_image = None
+    average_left_ssim = None
+    average_right_ssim = None
+    average_ause = None
+    average_aurg = None
 
     batch_size = loader.batch_size \
         if loader.batch_size is not None \
@@ -118,68 +120,77 @@ def evaluate_model(model: Module, loader: DataLoader,
     tepoch = tqdm.tqdm(loader, description, unit='batch',
                        disable=(no_pbar or rank > 0))
 
+    # Set alpha to one so L1 has zero weight
+    ssim_loss = WeightedSSIMLoss(alpha=1)
+
+    model.eval()
+
     for i, image_pair in enumerate(tepoch):
         left = image_pair['left'].to(device)
         right = image_pair['right'].to(device)
-        ensemble = image_pair['ensemble'].to(device)
 
         images = torch.cat([left, right], dim=1)
 
-        image_pyramid = u.scale_pyramid(images, scales)
-        ensemble_pyramid = u.scale_pyramid(ensemble, scales)
+        prediction = model(left, scale)
 
-        disparities = model(left, scale)
+        disparity, uncertainty = torch.split(prediction, [2, 2], dim=1)
+        left_disp, right_disp = torch.split(disparity, [1, 1], dim=1)
 
-        recon_pyramid = u.reconstruct_pyramid(disparities, image_pyramid)
-        disp_loss, error_loss = loss_function(image_pyramid, disparities,
-                                              ensemble_pyramid,
-                                              recon_pyramid, i, disc)
+        left_recon = u.reconstruct_left_image(left_disp, right)
+        right_recon = u.reconstruct_right_image(right_disp, left)
 
-        if disc is not None:
-            disc_loss = u.run_discriminator(image_pyramid, recon_pyramid,
-                                            disc, disc_loss_function,
-                                            batch_size)
+        left_ssim = ssim(left_recon, left, kernel_size=kernel_size,
+                         reduction='sum', data_range=1.0)
+
+        right_ssim = ssim(right_recon, right, kernel_size=kernel_size,
+                          reduction='sum', data_range=1.0)
+
+        recon = torch.cat((left_recon, right_recon), dim=1)
+        _, _, height, width = recon.shape
+
+        error = ssim_loss.image_error(images, recon)
+        error = F.interpolate(error, size=(height, width), mode='bilinear',
+                              align_corners=True)
+
+        oracle_spars = spars.curve(error, error, device=device)
+        pred_spars = spars.curve(error, uncertainty, device=device)
+        random_spars = spars.random_curve(error)
+
+        ause = spars.ause(oracle_spars, pred_spars)
+        aurg = spars.aurg(pred_spars, random_spars)
 
         if rank > 0:
             continue
 
-        running_disp_loss += disp_loss.item()
-        running_error_loss += error_loss.item()
+        running_left_ssim += left_ssim.item()
+        average_left_ssim = running_left_ssim / ((i+1) * batch_size)
 
-        disp_loss_per_image = running_disp_loss / ((i+1) * batch_size)
-        error_loss_per_image = running_error_loss / ((i+1) * batch_size)
+        running_right_ssim += right_ssim.item()
+        average_right_ssim = running_right_ssim / ((i+1) * batch_size)
 
-        if disc is not None:
-            running_disc_loss += disc_loss.item()
-            disc_loss_per_image = running_disc_loss / ((i+1) * batch_size)
+        running_ause += ause.item()
+        average_ause = running_ause / ((i+1) * batch_size)
 
-        tepoch.set_postfix(disp=disp_loss_per_image,
-                           error=error_loss_per_image,
-                           disc=disc_loss_per_image,
-                           scale=scale)
+        running_aurg += aurg.item()
+        average_aurg = running_aurg / ((i+1) * batch_size)
+
+        tepoch.set_postfix(left=average_left_ssim, right=average_right_ssim,
+                           ause=average_ause, aurg=average_aurg, scale=scale)
 
         if save_evaluation_to is not None and i == 0:
-            original_image = images[0]
-            ensemble_image = ensemble[0]
-
-            disparity_image = disparities[0][0]
-            recon_image = recon_pyramid[0][0]
-
-            error_image = loss_function.reprojection_error[0]
-
-            save_comparisons(original_image, ensemble_image,
-                             disparity_image, recon_image,
-                             error_image, save_evaluation_to,
+            save_comparisons(images[0], disparity[0], uncertainty[0],
+                             recon[0], error[0], save_evaluation_to,
                              epoch_number, is_final, device)
 
     if no_pbar and rank == 0:
-        disc_loss_string = f'{disc_loss_per_image:.2e}' \
-            if disc_loss_per_image is not None else None
-
         print(f'{description}:'
-              f'\n\tdisparity loss: {disp_loss_per_image:.2e}'
-              f'\n\terror loss: {error_loss_per_image:.2e}'
-              f'\n\tdiscriminator loss: {disc_loss_string}'
+              f'\n\tleft ssim: {average_left_ssim:.2f}'
+              f'\n\tright ssim: {average_right_ssim:.2f}'
+              f'\n\tause: {average_ause:.2f}'
+              f'\n\taurg: {average_aurg:.2f}'
               f'\n\tdisparity scale: {scale:.2f}')
 
-    return disp_loss_per_image, error_loss_per_image, disc_loss_per_image
+    average_ssim = (average_left_ssim, average_right_ssim)
+    average_spars = (average_ause, average_aurg)
+
+    return average_ssim, average_spars

@@ -1,4 +1,4 @@
-from typing import List, Optional, OrderedDict, Union
+from typing import List, OrderedDict, Union
 
 import matplotlib.pyplot as plt
 
@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Module
+from torch.optim import Optimizer
 
 from torchvision.utils import make_grid
 
@@ -137,10 +138,10 @@ def concatenate_pyramids(a: ImagePyramid, b: ImagePyramid) -> ImagePyramid:
     return [torch.cat((x, y), 0) for x, y in zip(a, b)]
 
 
-def adjust_disparity_scale(epoch: int, m: float = 0.02, c: float = 0.0,
-                           step: float = 0.2, offset: float = 0.1,
-                           min_scale: float = 0.3,
-                           max_scale: float = 1.0) -> float:
+def adjust_disparity(epoch: int, m: float = 0.02, c: float = 0.0,
+                     step: float = 0.2, offset: float = 0.1,
+                     min_scale: float = 0.3,
+                     max_scale: float = 1.0) -> float:
     """Calculate the disparity scaling of the model given the epoch number.
 
     The scale is calculated based on a linear equation y = mx + c, where:
@@ -316,3 +317,25 @@ def get_comparison(image: Tensor, *comparisons: Tensor,
 def prepare_state_dict(state_dict: OrderedDict) -> dict:
     """Cleanup state dict because of `modules` key in DDP."""
     return {k.replace("module.", ""): v for k, v in state_dict.items()}
+
+
+def adjust_learning_rate(optimiser: Optimizer, epoch: int, lr: float) -> None:
+    """Halve and quarter the learning rate at 30 and 40 epochs respectively.
+
+    Code adapted from:
+        https://tinyurl.com/23jb9tnz
+
+    Args:
+        optimiser (Optimizer): The optimiser to alter the learning rate of.
+        epoch (int): The current epoch number.,
+        lr (float): The initial learning rate.
+    """
+    if epoch < 30:
+        target_learning_rate = lr
+    elif epoch < 40:
+        target_learning_rate = lr / 2
+    else:
+        target_learning_rate = lr / 4
+
+    for group in optimiser.param_groups:
+        group['lr'] = target_learning_rate
