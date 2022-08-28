@@ -169,10 +169,10 @@ def evaluate_model(model: Module, loader: DataLoader,
         average_right_ssim = running_right_ssim / ((i+1) * batch_size)
 
         running_ause += ause.item()
-        average_ause = running_ause / ((i+1) * batch_size)
+        average_ause = running_ause / (i+1)
 
         running_aurg += aurg.item()
-        average_aurg = running_aurg / ((i+1) * batch_size)
+        average_aurg = running_aurg / (i+1)
 
         tepoch.set_postfix(left=average_left_ssim, right=average_right_ssim,
                            ause=average_ause, aurg=average_aurg, scale=scale)
