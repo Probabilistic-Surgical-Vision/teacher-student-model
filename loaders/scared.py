@@ -35,7 +35,8 @@ class SCAREDEnsembleDataset(Dataset):
     """
     LEFT_PATH = 'left'
     RIGHT_PATH = 'right'
-    EXTENSION = 'png'
+    IMAGE_EXT = 'png'
+    ENSEMBLE_EXT = 'tiff'
 
     def __init__(self, scared_path: str, ensemble_path: str, split: str,
                  transform: Optional[object] = None,
@@ -44,12 +45,12 @@ class SCAREDEnsembleDataset(Dataset):
         if split not in ('train', 'test'):
             raise ValueError('Split must be either "train" or "test".')
 
-        left_glob = os.path.join(scared_path, split, '**', 'images',
-                                 self.LEFT_PATH, f'*.{self.EXTENSION}')
-        right_glob = os.path.join(scared_path, split, '**', 'images',
-                                  self.RIGHT_PATH, f'*.{self.EXTENSION}')
-
-        ensemble_glob = os.path.join(ensemble_path, split, '*.pt')
+        left_glob = os.path.join(scared_path, split, '**',
+                                 self.LEFT_PATH, f'*.{self.IMAGE_EXT}')
+        right_glob = os.path.join(scared_path, split, '**',
+                                  self.RIGHT_PATH, f'*.{self.IMAGE_EXT}')
+        ensemble_glob = os.path.join(ensemble_path, split,
+                                     f'*.{self.ENSEMBLE_EXT}')
 
         left_images = glob.glob(left_glob)
         right_images = glob.glob(right_glob)
