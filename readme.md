@@ -1,13 +1,10 @@
-# _Randomly-connected neural networks for self-supervised monocular depth estimation_ Model
+# _Randomly-connected neural networks for self-supervised monocular depth estimation_ Ensemble Depth-Uncertainty Model
 
-This repository holds the code for a refactored version of the model proposed by Sam Tukra and Stamatia Giannarou in [_Randomly-connected neural networks for self-supervised depth estimation_](https://www.tandfonline.com/doi/full/10.1080/21681163.2021.1997648). The package has been adapted from the original repo, but with added configurability of the model architecture, discriminator and loss functions. Furthermore, the package has been designed to parallelise across multiple nodes and GPUs using PyTorch's [`DistributedDataParallel`](something) module.
+This repository holds the code for the depth-uncertainty model adapted Sam Tukra and Stamatia Giannarou in [_Randomly-connected neural networks for self-supervised depth estimation_](https://www.tandfonline.com/doi/full/10.1080/21681163.2021.1997648). This model uses predictive techniques to learn the aleatoric uncertainty:
 
 ![Results from the model when trained on the Hamlyn Dataset using the Monodepth Loss](./results.png)
 
-## Model Description
-
-
-...
+Where left-most is the original image, 2nd from the left is the predicted disparity, 2nd from the right is the uncertainty and the right-most image is the true error.
 
 ## Pre-requisites and installation
 
@@ -62,7 +59,11 @@ Within the `train` package, there are modules for:
 
 To create the model, discriminator and loss functions, each class takes in keyword arguments. Therefore, it is possible to unpack a dictionary of the key values into the class constructor.
 
-This is used to create a single configuration file that can pass the dictionaries
+See the `config.yml` file for how to create the model architecture from kwargs.
+
+To change the loss function used for learning uncertainty, modify `error_loss_config.loss_type` to be either `l1` for absolute error loss, or `bayesian` for the laplacian log-likelihood.
+
+_The names `l1` and `bayesian` should be updated to reflect what their true loss functions are actually calculating._
 
 
 ## Repository Structure
@@ -90,16 +91,14 @@ model/
     model.py
 
 scripts/
+    demo_train.sh # showcase the model training
     finetune_test.sh # example for finetuning model
     local_test.sh # test training without cuda
     macos_setup.sh # set up GPU training with MPS
     package_model.sh # zip model package
-    parallel_test.sh # test training the model with DDP
     rcs_parallel_job.rcs # train model using DDP on HPC
     rcs_serial_job.pbs # train model without DDP on HPC
     remove_model.sh # (paperspace only) delete package
-    serial_test.sh # example for training model
-    slurm_job.sh # train model on SLURM
 
 train/
     __init__.py
@@ -107,13 +106,13 @@ train/
     loss.py # all loss functions used in training
     train.py
     transforms.py # modified torchvision transforms
-    utils.py # useful functions and type hints
+    utils.py # useful functions and type definitions
 
 .gitignore
 config.yml # The config file for building the model, disc and loss
 main.py # for training the model without DDP
 parallel_main.py # for training the model with DDP
 readme.md
-requirements.txt # pip packages needed to run the model
+requirements.txt
 results.png
 ```
